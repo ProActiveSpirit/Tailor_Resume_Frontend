@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+:root {
+  /* Warm paper palette — easy on the eyes for long job-search sessions */
+  --paper: #f3ebe0;
+  --ink: #241c17;
+  --ink-muted: #5e5349;
+  /* Umber / warm sienna accents (less cool than teal) */
+  --accent: #8b4d2f;
+  --accent-strong: #6f3d26;
+  --accent-pressed: #5a3120;
+  --accent-soft: #efe4d8;
+  --accent-glow: #e8d9ca;
+  --border: #dfd3c4;
+  /* Closer to paper — softer lift off the page */
+  --card: color-mix(in srgb, var(--paper) 82%, white);
+  --border-muted: color-mix(in srgb, var(--border) 58%, var(--paper));
+  --shadow: color-mix(in srgb, var(--ink) 7%, transparent);
+  /* Panel elevation only — lighter than default shadow */
+  --shadow-soft: color-mix(in srgb, var(--ink) 4.5%, transparent);
+}
+
+@theme inline {
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display), ui-serif, Georgia, serif;
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-pressed: var(--accent-pressed);
+  --color-accent-soft: var(--accent-soft);
+}
+
+body {
+  background: radial-gradient(
+      ellipse 120% 80% at 50% -20%,
+      color-mix(in srgb, var(--accent-soft) 55%, transparent),
+      transparent
+    ),
+    var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* Thin scrollbars for panels/textareas — palette-aligned, unobtrusive until hover */
+.scrollbar-tailor {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--ink-muted) 40%, transparent)
+    transparent;
+}
+
+.scrollbar-tailor:hover {
+  scrollbar-color: color-mix(in srgb, var(--ink-muted) 72%, transparent)
+    transparent;
+}
+
+.scrollbar-tailor::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-tailor::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-tailor::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--ink-muted) 40%, transparent);
+}
+
+.scrollbar-tailor:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ink-muted) 72%, transparent);
+}

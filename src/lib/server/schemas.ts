@@ -85,8 +85,8 @@ const contactSchema = z
     email: z.string().max(200).nullable(),
     phone: z.string().max(80).nullable(),
     location: z.string().max(200).nullable(),
-    linkedin: z.string().max(300).nullable(),
-    website: z.string().max(300).nullable(),
+    linkedin: z.union([z.string().max(300), z.null()]).optional().default(null),
+    website: z.union([z.string().max(300), z.null()]).optional().default(null),
   })
   .strict();
 

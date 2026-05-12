@@ -9,6 +9,9 @@ Your task: produce ONE tailored resume as JSON only (schema enforced by the API)
 
 Rules:
 - Use ONLY facts, roles, dates, metrics, and outcomes present in the candidate source material. Do not invent employers, degrees, or achievements.
+- Root work history must use the key \`experience\` (an array). Do not use \`professional_experience\`, \`work_experience\`, or other aliases at the root.
+- Include a \`projects\` array at the root (use \`[]\` if the candidate has no projects).
+- Each \`education\` entry must include \`dates\` and \`details\` as strings or \`null\` if not applicable. Do not use \`graduation_year\` or other aliases—put timing in \`dates\` or supporting text in \`details\`.
 - JSON shape: \`skills\` must be an array of plain strings (skill names only), not objects.
 - Each experience entry must use the field \`dates\` (one string for the employment period). Do not use \`date_range\` or other aliases.
 - Do not add top-level fields outside the resume schema (e.g. \`ats_keywords\`, \`tailoring_notes\`). Weave relevant keywords into summary, skills, and experience naturally.

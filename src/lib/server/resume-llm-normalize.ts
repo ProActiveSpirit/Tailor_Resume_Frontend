@@ -4,6 +4,8 @@
 
 const ROOT_STRIP_KEYS = new Set(["ats_keywords", "tailoring_notes"]);
 
+const EDUCATION_STRIP_KEYS = new Set(["graduation_year"]);
+
 function coerceSkillEntry(entry: unknown): string | undefined {
   if (typeof entry === "string") {
     const t = entry.trim();
@@ -36,6 +38,42 @@ function normalizeExperienceItem(item: unknown): unknown {
   return e;
 }
 
+function stringOrNullMax(v: unknown, maxLen: number): string | null {
+  if (v === undefined || v === null) return null;
+  if (typeof v === "number" && Number.isFinite(v)) return String(v).slice(0, maxLen);
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  if (t === "") return null;
+  return t.length > maxLen ? t.slice(0, maxLen) : t;
+}
+
+function normalizeEducationItem(item: unknown): unknown {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+  const ed = { ...(item as Record<string, unknown>) };
+
+  const gyRaw = ed.graduation_year;
+  let dates = stringOrNullMax(ed.dates, 80);
+  if (dates === null && gyRaw !== undefined && gyRaw !== null && gyRaw !== "") {
+    dates = stringOrNullMax(gyRaw, 80);
+  }
+
+  for (const k of EDUCATION_STRIP_KEYS) {
+    delete ed[k];
+  }
+
+  ed.dates = dates;
+  ed.details = stringOrNullMax(ed.details, 500);
+
+  return ed;
+}
+
+function resolveExperienceArray(root: Record<string, unknown>): unknown[] | undefined {
+  if (Array.isArray(root.experience)) return root.experience;
+  if (Array.isArray(root.professional_experience)) return root.professional_experience;
+  if (Array.isArray(root.work_experience)) return root.work_experience;
+  return undefined;
+}
+
 export function normalizeLlmResumeJson(input: unknown): unknown {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     return input;
@@ -47,6 +85,23 @@ export function normalizeLlmResumeJson(input: unknown): unknown {
     delete root[k];
   }
 
+  const expArr = resolveExperienceArray(root);
+  delete root.professional_experience;
+  delete root.work_experience;
+  if (expArr !== undefined) {
+    root.experience = expArr.map((item) => normalizeExperienceItem(item));
+  }
+
+  if (!Array.isArray(root.projects)) {
+    root.projects = [];
+  }
+
+  if (!Array.isArray(root.education)) {
+    root.education = [];
+  } else {
+    root.education = root.education.map((item) => normalizeEducationItem(item));
+  }
+
   if (Array.isArray(root.skills)) {
     const out: string[] = [];
     for (const s of root.skills) {
@@ -54,10 +109,6 @@ export function normalizeLlmResumeJson(input: unknown): unknown {
       if (coerced !== undefined) out.push(coerced);
     }
     root.skills = out;
-  }
-
-  if (Array.isArray(root.experience)) {
-    root.experience = root.experience.map((item) => normalizeExperienceItem(item));
   }
 
   return root;

@@ -13,7 +13,7 @@ const JSON_OBJECT_ONLY_FOOTER = `
 
 Output format: respond with a single JSON object only (no markdown code fences, no prose before or after).
 The JSON must match the resume structure: target_title, contact (name, email, phone, location, linkedin, website),
-summary, skills (array of strings only), experience[], education[], projects[].
+summary, skills (array of strings only), experience[] (not professional_experience), education[] (each entry has dates and details, string or null), projects[] (use [] if none).
 Each experience item must include "dates" (string period); skills must not be objects. No extra root keys.`;
 
 const GPT41_RATE_MTUSD = { in: 2.0, out: 8.0 } as const;

@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useState } from "react";
+import { formatGenerationLogTargetRole } from "@/lib/generation-log";
 
 export type GenerationLogRow = {
   id: string;
@@ -156,7 +157,7 @@ export function AdminGenerationLogTable({
                             </span>
                             <span>
                               <span className="font-semibold text-stone-800">Target role:</span>{" "}
-                              {row.target_role ?? "—"}
+                              {formatGenerationLogTargetRole(row.target_role)}
                             </span>
                             {row.phone ? (
                               <span>

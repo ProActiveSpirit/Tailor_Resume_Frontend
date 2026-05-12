@@ -9,13 +9,16 @@ import {
   useRef,
   useState,
 } from "react";
+import { AtsPanel } from "@/components/ats-panel";
 import { UserMenu } from "@/components/user-menu";
+import { computeATS, type ATSSuggestion } from "@/lib/ats-engine";
 import {
   generateResume,
   type LlmProvider,
   type PdfTemplate,
 } from "@/lib/api";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { GENERATION_LOG_PLACEHOLDER_TARGET_ROLE } from "@/lib/generation-log";
 import { createClient } from "@/lib/supabase/client";
 import { isValidEmailAddress } from "@/lib/auth-validation";
 import type { Resume } from "@/lib/types";
@@ -311,6 +314,13 @@ export default function Home() {
     null as number | null,
   );
 
+  const [atsOpen, setAtsOpen] = useState(false);
+  const [atsResult, setAtsResult] = useState(
+    null as ReturnType<typeof computeATS> | null,
+  );
+  const [atsSessionKey, setAtsSessionKey] = useState(0);
+  const [atsLoading, setAtsLoading] = useState(false);
+
   const jobDescriptionRef = useRef(null) as DivRef;
   const formRef = useRef(null) as FormRef;
   const drawerTextareaRef = useRef(null) as TextAreaRef;
@@ -531,6 +541,9 @@ export default function Home() {
           pdf_template: pdfTemplate,
         });
         setResult(res);
+        setAtsOpen(false);
+        setAtsResult(null);
+        setAtsSessionKey(0);
 
         if (u) {
           const m = res.generation_meta;
@@ -541,7 +554,7 @@ export default function Home() {
             job_description: jobDescription,
             source_resume: sourceResume,
             display_name: displayName.trim(),
-            target_role: null,
+            target_role: GENERATION_LOG_PLACEHOLDER_TARGET_ROLE,
             phone: phone.trim() || null,
             pdf_template: pdfTemplate,
             anthropic_model: m.resolved_model,
@@ -561,6 +574,9 @@ export default function Home() {
         }
       } catch (err) {
         setResult(null);
+        setAtsOpen(false);
+        setAtsResult(null);
+        setAtsSessionKey(0);
         setError(err instanceof Error ? err.message : "Something went wrong");
       } finally {
         setLoading(false);
@@ -795,6 +811,46 @@ export default function Home() {
       setError(err instanceof Error ? err.message : "DOCX download failed");
     }
   }, [result]);
+
+  const runAtsCheck = useCallback(() => {
+    if (!result) return;
+    setAtsLoading(true);
+    requestAnimationFrame(() => {
+      const r = computeATS(result.resume, jobDescription);
+      setAtsSessionKey((k) => k + 1);
+      setAtsResult(r);
+      setAtsOpen(true);
+      setAtsLoading(false);
+    });
+  }, [result, jobDescription]);
+
+  const applyAtsSuggestion = useCallback(
+    (suggestion: ATSSuggestion) => {
+      if (!suggestion.apply) return;
+      setResult((prev) => {
+        if (!prev) return prev;
+        const updated = suggestion.apply!(prev.resume);
+        setAtsResult(computeATS(updated, jobDescription));
+        return { ...prev, resume: updated };
+      });
+    },
+    [jobDescription],
+  );
+
+  const applyAllAtsSuggestions = useCallback(() => {
+    setResult((prev) => {
+      if (!prev) return prev;
+      let resume = prev.resume;
+      for (let i = 0; i < 64; i++) {
+        const pass = computeATS(resume, jobDescription);
+        const next = pass.suggestions.find((s) => s.canApply && s.apply);
+        if (!next?.apply) break;
+        resume = next.apply(resume);
+      }
+      setAtsResult(computeATS(resume, jobDescription));
+      return { ...prev, resume };
+    });
+  }, [jobDescription]);
 
   const drawerPanelWidthStyle: CSSProperties =
     drawerWidthPx > 120
@@ -1135,6 +1191,18 @@ export default function Home() {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
+                    onClick={() => void runAtsCheck()}
+                    disabled={atsLoading}
+                    className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-muted)] bg-[var(--paper)] px-3 py-1.5 text-xs font-semibold text-stone-800 shadow-sm transition hover:border-accent hover:bg-accent-soft/50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+                    title="Heuristic ATS-style check (no AI)"
+                  >
+                    <span aria-hidden className="text-accent-pressed">
+                      ◎
+                    </span>
+                    {atsLoading ? "Checking…" : "ATS Check"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => void downloadPdf()}
                     className="inline-flex min-h-9 items-center justify-center rounded-lg border border-[var(--border-muted)] bg-[var(--paper)] px-3 py-1.5 text-xs font-semibold text-stone-800 shadow-sm transition hover:border-accent hover:bg-accent-soft/50 sm:text-sm"
                   >
@@ -1165,6 +1233,16 @@ export default function Home() {
               )}
             </div>
           </section>
+
+          {atsOpen && atsResult ? (
+            <AtsPanel
+              key={atsSessionKey}
+              result={atsResult}
+              onClose={() => setAtsOpen(false)}
+              onApply={applyAtsSuggestion}
+              onApplyAll={applyAllAtsSuggestions}
+            />
+          ) : null}
 
           {editorDrawer ? (
             <>

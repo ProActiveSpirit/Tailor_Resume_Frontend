@@ -53,6 +53,5 @@ export type GenerationMeta = {
 
 export type GenerateResumeResponse = {
   resume: Resume;
-  pdf_base64: string;
   generation_meta: GenerationMeta;
 };

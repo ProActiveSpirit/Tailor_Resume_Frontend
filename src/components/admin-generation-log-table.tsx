@@ -11,7 +11,7 @@ export type GenerationLogRow = {
   job_description: string;
   source_resume: string;
   display_name: string;
-  target_role: string;
+  target_role: string | null;
   phone: string | null;
   pdf_template: string;
   anthropic_model: string | null;
@@ -156,7 +156,7 @@ export function AdminGenerationLogTable({
                             </span>
                             <span>
                               <span className="font-semibold text-stone-800">Target role:</span>{" "}
-                              {row.target_role}
+                              {row.target_role ?? "—"}
                             </span>
                             {row.phone ? (
                               <span>

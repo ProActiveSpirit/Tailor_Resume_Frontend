@@ -1,14 +1,8 @@
-import type { GenerateResumeResponse, PdfTemplate } from "./types";
+import type { GenerateResumeResponse } from "./types";
 
-const base = (): string => {
-  const u = process.env.NEXT_PUBLIC_API_URL?.trim();
-  if (!u) {
-    throw new Error(
-      "Set NEXT_PUBLIC_API_URL to your FastAPI base URL (e.g. http://localhost:8000)",
-    );
-  }
-  return u.replace(/\/$/, "");
-};
+export type LlmProvider = "anthropic" | "openai";
+
+export type PdfTemplate = "classic" | "minimal" | "structured" | "editorial";
 
 export type GeneratePayload = {
   system_prompt: string;
@@ -17,7 +11,9 @@ export type GeneratePayload = {
   display_name: string;
   email: string;
   phone?: string;
-  target_role: string;
+  address?: string;
+  llm_provider: LlmProvider;
+  llm_model?: string;
   anthropic_model?: string;
   anthropic_max_tokens?: number;
   claude_output_effort?: string;
@@ -27,7 +23,7 @@ export type GeneratePayload = {
 export async function generateResume(
   body: GeneratePayload,
 ): Promise<GenerateResumeResponse> {
-  const res = await fetch(`${base()}/api/generate-resume`, {
+  const res = await fetch("/api/generate-resume", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

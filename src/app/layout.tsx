@@ -17,7 +17,7 @@ const sourceSans = Source_Sans_3({
 export const metadata: Metadata = {
   title: "Tailor — Resume for the role",
   description:
-    "Shape your experience to match a job description and export a polished PDF.",
+    "Shape your experience to match a job description and preview a tailored resume.",
 };
 
 export default function RootLayout({

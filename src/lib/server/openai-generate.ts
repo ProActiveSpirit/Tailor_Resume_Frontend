@@ -1,5 +1,5 @@
-import OpenAI from "openai";
 import type { GenerationMeta, Resume } from "@/lib/types";
+import { createServerOpenAIClient } from "./openai-client";
 import {
   buildUserPayload,
   JSON_OBJECT_ONLY_FOOTER,
@@ -43,15 +43,10 @@ export async function generateResumeOpenAI(
   company_name: string | null;
   job_title: string | null;
 }> {
-  const apiKey = (process.env.OPENAI_API_KEY ?? "").trim();
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is not set");
-  }
-
   const resolvedModel = modelId.trim();
   const maxTokens = Math.min(body.anthropic_max_tokens ?? 8192, 8192);
 
-  const client = new OpenAI({ apiKey });
+  const client = createServerOpenAIClient();
 
   const systemText = `${STATIC_TAILOR_INSTRUCTIONS}\n\n${body.system_prompt.trim()}${JSON_OBJECT_ONLY_FOOTER}`;
 

@@ -50,6 +50,12 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!user) {
+    if (path.startsWith("/api/")) {
+      return NextResponse.json(
+        { detail: "Your session expired. Please sign in again." },
+        { status: 401 },
+      );
+    }
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

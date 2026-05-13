@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/client";
 import { fetchProfileRole } from "@/lib/supabase/profile-role";
 import type { AppRole } from "@/lib/roles";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 function initialsFromEmail(email: string): string {
@@ -20,12 +19,14 @@ function initialsFromEmail(email: string): string {
 
 export function UserMenu() {
   const { initialAppRole, initialEmail } = useAppRoleBootstrap();
-  const router = useRouter();
   const menuId = useId();
   const [email, setEmail] = useState<string | null>(initialEmail);
   const [appRole, setAppRole] = useState<AppRole>(initialAppRole);
   const [open, setOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  const displayEmail = email ?? initialEmail;
 
   const fetchRole = useCallback(async (uid: string, sessionEmail: string | null) => {
     const supabase = createClient();
@@ -80,15 +81,47 @@ export function UserMenu() {
 
   const handleSignOut = useCallback(async () => {
     setOpen(false);
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
-  }, [router]);
+    setSigningOut(true);
+    try {
+      const supabase = createClient();
 
-  if (!email) return null;
+      let serverOk = false;
+      try {
+        const res = await fetch("/auth/sign-out", {
+          method: "POST",
+          credentials: "same-origin",
+        });
+        serverOk = res.ok;
+        if (!res.ok) {
+          let detail = res.statusText;
+          try {
+            const j = (await res.json()) as { detail?: string };
+            if (typeof j.detail === "string") detail = j.detail;
+          } catch {
+            void 0;
+          }
+          console.warn("[sign-out] server:", detail);
+        }
+      } catch (e) {
+        console.error("[sign-out] server request failed", e);
+      }
 
-  const initials = initialsFromEmail(email);
+      const { error: clientErr } = await supabase.auth.signOut();
+      if (clientErr && !serverOk) {
+        console.error("[sign-out] client and server sign-out failed:", clientErr.message);
+      }
+
+      setEmail(null);
+      setAppRole("normal");
+      window.location.replace("/login");
+    } finally {
+      setSigningOut(false);
+    }
+  }, []);
+
+  if (!displayEmail) return null;
+
+  const initials = initialsFromEmail(displayEmail);
   const showMembers = appRole === "admin" || appRole === "developer";
   const showGenerationLog = appRole === "admin";
 
@@ -99,10 +132,11 @@ export function UserMenu() {
     <div ref={rootRef} className="relative shrink-0">
       <button
         type="button"
-        className="flex h-12 w-12 items-center justify-center rounded-full border border-[var(--border-muted)] bg-accent-soft/80 text-sm font-semibold tracking-tight text-accent-strong shadow-sm transition hover:border-accent hover:bg-accent-soft"
+        className="flex h-12 w-12 items-center justify-center rounded-full border border-[var(--border-muted)] bg-accent-soft/80 text-sm font-semibold tracking-tight text-accent-strong shadow-sm transition hover:border-accent hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-60"
         aria-expanded={open}
         aria-haspopup="menu"
         aria-controls={open ? menuId : undefined}
+        disabled={signingOut}
         onClick={() => setOpen((o) => !o)}
       >
         <span className="sr-only">Account menu</span>
@@ -147,9 +181,10 @@ export function UserMenu() {
             type="button"
             role="menuitem"
             className={itemClass}
+            disabled={signingOut}
             onClick={handleSignOut}
           >
-            Sign out
+            {signingOut ? "Signing out…" : "Sign out"}
           </button>
         </div>
       ) : null}

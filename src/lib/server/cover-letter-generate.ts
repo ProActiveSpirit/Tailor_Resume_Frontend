@@ -5,8 +5,8 @@ import type {
   OutputConfig,
   TextBlockParam,
 } from "@anthropic-ai/sdk/resources/messages/messages";
-import OpenAI from "openai";
 import type { GenerationMeta } from "@/lib/types";
+import { createServerOpenAIClient } from "./openai-client";
 import { parseCoverLetterJsonValue } from "@/lib/cover-letter-parse";
 import {
   buildCoverLetterUserPayload,
@@ -160,14 +160,9 @@ export async function generateCoverLetterOpenAI(
   body: GenerateCoverLetterRequestParsed,
   modelId: string,
 ): Promise<{ letter: string; generationMeta: GenerationMeta }> {
-  const apiKey = (process.env.OPENAI_API_KEY ?? "").trim();
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is not set");
-  }
-
   const resolvedModel = modelId.trim();
   const maxTokens = Math.min(body.anthropic_max_tokens ?? 8192, 8192);
-  const client = new OpenAI({ apiKey });
+  const client = createServerOpenAIClient();
 
   const systemText = `${STATIC_COVER_LETTER_INSTRUCTIONS}${COVER_LETTER_JSON_FOOTER}`;
 

@@ -18,11 +18,13 @@ import {
 } from "react";
 import { AtsPanel } from "@/components/ats-panel";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { UserMenu } from "@/components/user-menu";
 import { computeATS, type ATSResult, type ATSSuggestion } from "@/lib/ats-engine";
 import {
   generateCoverLetter,
   generateResume,
+  type GeneratePayload,
   type LlmProvider,
   type PdfTemplate,
 } from "@/lib/api";
@@ -30,14 +32,12 @@ import {
   generateCoverLetterViaPuter,
   generateResumeViaPuter,
 } from "@/lib/puter-resume";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { GENERATION_LOG_PLACEHOLDER_TARGET_ROLE } from "@/lib/generation-log";
 import { createClient } from "@/lib/supabase/client";
 import {
   isValidEmailAddress,
   isValidOptionalHttpUrl,
 } from "@/lib/auth-validation";
-import type { GenerateResumeResponse, Resume } from "@/lib/types";
+import type { GenerateResumeResponse, GenerationMeta, Resume } from "@/lib/types";
 import { contactLines } from "@/lib/resume-contact-lines";
 import {
   type TailorInitialProfile,
@@ -183,59 +183,49 @@ function isValidPublicJobUrl(raw: string): boolean {
   }
 }
 
-/** Columns shared by draft persist and partial profile saves. */
-function profileGenerationPrefsPayload(
-  llmProvider: LlmProvider,
-  llmModel: string,
-  pdfTemplate: PdfTemplate,
-) {
-  return {
-    llm_provider: llmProvider,
-    llm_model: llmModel.trim() || null,
-    anthropic_max_tokens: DEFAULT_MAX_OUTPUT_TOKENS,
-    claude_output_effort: null,
-    pdf_template: pdfTemplate,
-  };
+const SESSION_EXPIRED_DETAIL = "Your session expired. Please sign in again.";
+
+class SessionExpiredError extends Error {
+  constructor(message = SESSION_EXPIRED_DETAIL) {
+    super(message);
+    this.name = "SessionExpiredError";
+  }
 }
 
-async function persistGenerationDraftToProfile(
-  supabase: SupabaseClient,
-  userId: string,
-  draft: {
-    displayName: string;
-    email: string;
-    phone: string;
-    address: string;
-    linkedin: string;
-    systemPrompt: string;
-    sourceResume: string;
-    llmProvider: LlmProvider;
-    llmModel: string;
-    pdfTemplate: PdfTemplate;
-  },
-): Promise<{ error: Error | null }> {
-  const prefs = profileGenerationPrefsPayload(
-    draft.llmProvider,
-    draft.llmModel,
-    draft.pdfTemplate,
-  );
+async function parseApiDetail(res: Response): Promise<string> {
+  const text = await res.text();
+  try {
+    const j = JSON.parse(text) as { detail?: unknown };
+    if (typeof j.detail === "string" && j.detail.trim()) return j.detail.trim();
+  } catch {
+    void 0;
+  }
+  return text.trim() || res.statusText || `Request failed (${res.status})`;
+}
 
-  const { error } = await supabase
-    .from("profiles")
-    .update({
-      display_name: draft.displayName.trim(),
-      email: draft.email.trim(),
-      phone: draft.phone.trim() || null,
-      address: draft.address.trim() || null,
-      linkedin: draft.linkedin.trim() || null,
-      system_prompt: draft.systemPrompt.trim(),
-      source_resume: draft.sourceResume.trim(),
-      ...prefs,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", userId);
+async function persistGenerationRecord(
+  generation: GeneratePayload,
+  generationMeta: GenerationMeta,
+  options: { persistProfile: boolean },
+): Promise<void> {
+  const res = await fetch("/api/generation-record", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      generation,
+      generation_meta: generationMeta,
+      persist_profile: options.persistProfile,
+    }),
+  });
 
-  return { error: error ? new Error(error.message) : null };
+  if (res.ok) return;
+
+  const detail = await parseApiDetail(res);
+  if (res.status === 401) {
+    throw new SessionExpiredError(detail);
+  }
+  console.error("generation record persist failed:", detail);
 }
 
 type ApplyTailorProfileRowSetters = {
@@ -455,6 +445,7 @@ export function TailorHomeClient({
   initialProfile,
   authEmail,
 }: TailorHomeClientProps) {
+  const router = useRouter();
   const [systemPrompt, setSystemPrompt] = useState(() =>
     initialSystemPromptFromProfile(initialProfile),
   );
@@ -756,36 +747,7 @@ export function TailorHomeClient({
           );
           return;
         }
-
-        const supabase = createClient();
-        const {
-          data: { user: u },
-        } = await supabase.auth.getUser();
-        if (u) {
-          const { error: persistErr } = await persistGenerationDraftToProfile(
-            supabase,
-            u.id,
-            {
-              displayName: displayName.trim(),
-              email: email.trim(),
-              phone: phone.trim(),
-              address: address.trim(),
-              linkedin: linkedin.trim(),
-              systemPrompt,
-              sourceResume,
-              llmProvider,
-              llmModel,
-              pdfTemplate,
-            },
-          );
-          if (persistErr)
-            console.error(
-              "profiles draft persist failed:",
-              persistErr.message,
-            );
-        }
-
-        const generationPayload = {
+        const generationPayload: GeneratePayload = {
           system_prompt: systemPrompt,
           job_description: jd,
           source_resume: sourceResume,
@@ -799,7 +761,8 @@ export function TailorHomeClient({
           anthropic_max_tokens: DEFAULT_MAX_OUTPUT_TOKENS,
           pdf_template: pdfTemplate,
         };
-
+        console.log("generationPayload:", generationPayload);
+        console.log("usePuterFree:", usePuterFree);
         const res = usePuterFree
           ? await generateResumeViaPuter(generationPayload)
           : await generateResume(generationPayload);
@@ -809,36 +772,21 @@ export function TailorHomeClient({
         setAtsResult(null);
         setAtsSessionKey(0);
 
-        if (u) {
-          const m = res.generation_meta;
-          const { error: logErr } = await supabase.from("generation_logs").insert({
-            user_id: u.id,
-            user_email: u.email ?? null,
-            system_prompt: systemPrompt,
-            job_description: jd,
-            source_resume: sourceResume,
-            display_name: displayName.trim(),
-            target_role: GENERATION_LOG_PLACEHOLDER_TARGET_ROLE,
-            phone: phone.trim() || null,
-            pdf_template: pdfTemplate,
-            anthropic_model: m.resolved_model,
-            anthropic_max_tokens: m.max_tokens,
-            claude_output_effort: null,
-            input_tokens: m.input_tokens,
-            output_tokens: m.output_tokens,
-            cache_creation_input_tokens: m.cache_creation_input_tokens,
-            cache_read_input_tokens: m.cache_read_input_tokens,
-            estimated_cost_usd: m.estimated_cost_usd,
-            api_key_source: m.api_key_source,
-          });
-          if (logErr) console.error("generation_logs insert failed:", logErr.message);
-        }
+        await persistGenerationRecord(generationPayload, res.generation_meta, {
+          persistProfile: true,
+        });
       } catch (err) {
         setResult(null);
         setCoverLetter(null);
         setAtsOpen(false);
         setAtsResult(null);
         setAtsSessionKey(0);
+        if (err instanceof SessionExpiredError) {
+          setError(err.message);
+          router.replace("/login");
+          router.refresh();
+          return;
+        }
         setError(err instanceof Error ? err.message : "Something went wrong");
       } finally {
         setLoading(false);
@@ -858,6 +806,7 @@ export function TailorHomeClient({
       llmModel,
       pdfTemplate,
       usePuterFree,
+      router,
     ],
   );
 
@@ -1147,7 +1096,7 @@ export function TailorHomeClient({
         systemPrompt,
         atsResult,
       );
-      const generationPayload = {
+      const generationPayload: GeneratePayload = {
         system_prompt: upgradedSystemPrompt,
         job_description: jd,
         source_resume: sourceResume,
@@ -1176,35 +1125,16 @@ export function TailorHomeClient({
       setAtsOpen(true);
       setAtsSessionKey((k) => k + 1);
 
-      const supabase = createClient();
-      const {
-        data: { user: u },
-      } = await supabase.auth.getUser();
-      if (u) {
-        const m = upgraded.generation_meta;
-        const { error: logErr } = await supabase.from("generation_logs").insert({
-          user_id: u.id,
-          user_email: u.email ?? null,
-          system_prompt: upgradedSystemPrompt,
-          job_description: jd,
-          source_resume: sourceResume,
-          display_name: displayName.trim(),
-          target_role: GENERATION_LOG_PLACEHOLDER_TARGET_ROLE,
-          phone: phone.trim() || null,
-          pdf_template: pdfTemplate,
-          anthropic_model: m.resolved_model,
-          anthropic_max_tokens: m.max_tokens,
-          claude_output_effort: null,
-          input_tokens: m.input_tokens,
-          output_tokens: m.output_tokens,
-          cache_creation_input_tokens: m.cache_creation_input_tokens,
-          cache_read_input_tokens: m.cache_read_input_tokens,
-          estimated_cost_usd: m.estimated_cost_usd,
-          api_key_source: m.api_key_source,
-        });
-        if (logErr) console.error("generation_logs insert failed:", logErr.message);
-      }
+      await persistGenerationRecord(generationPayload, upgraded.generation_meta, {
+        persistProfile: false,
+      });
     } catch (err) {
+      if (err instanceof SessionExpiredError) {
+        setError(err.message);
+        router.replace("/login");
+        router.refresh();
+        return;
+      }
       setError(err instanceof Error ? err.message : "Resume upgrade failed");
     } finally {
       setResumeUpgradeLoading(false);
@@ -1225,6 +1155,7 @@ export function TailorHomeClient({
     pdfTemplate,
     usePuterFree,
     jobLink,
+    router,
   ]);
 
   return (

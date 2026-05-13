@@ -115,13 +115,11 @@ export function mapOpenAIToResponse(err: unknown): NextResponse | null {
     );
   }
   if (err instanceof OpenAIPermissionDeniedError) {
-    return NextResponse.json(
-      {
-        detail:
-          "OpenAI denied access (403). Check account permissions for this model.",
-      },
-      { status: 503 },
-    );
+    const apiMsg = openAIDetail(err);
+    const detail = apiMsg
+      ? `OpenAI denied access (403): ${apiMsg}`
+      : "OpenAI denied access (403). Confirm the model is enabled for this key, and set OPENAI_PROJECT_ID (project-scoped keys) or OPENAI_ORG_ID / OPENAI_ORGANIZATION if your account requires it. Remove blank OPENAI_* entries from .env—they can be sent as empty headers.";
+    return NextResponse.json({ detail }, { status: 503 });
   }
   if (err instanceof OpenAINotFoundError) {
     const hint =

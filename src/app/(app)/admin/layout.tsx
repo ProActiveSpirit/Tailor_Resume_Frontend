@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { createClient } from "@/lib/supabase/server";
+import { fetchProfileRole } from "@/lib/supabase/profile-role";
 import { redirect } from "next/navigation";
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
@@ -11,13 +12,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
 
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  const role = profile?.role;
+  const role = await fetchProfileRole(supabase, user.id, user.email);
   if (role !== "admin" && role !== "developer") redirect("/");
 
   return <>{children}</>;

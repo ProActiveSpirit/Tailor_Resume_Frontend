@@ -4,6 +4,9 @@ import type {
   Resume,
 } from "./types";
 
+const SESSION_EXPIRED_DETAIL =
+  "Your session expired. Please sign in again.";
+
 export type LlmProvider = "anthropic" | "openai";
 
 export type PdfTemplate = "classic" | "minimal" | "structured" | "editorial";
@@ -38,23 +41,68 @@ export type CoverLetterPayload = {
   claude_output_effort?: string;
 };
 
-export async function generateResume(
-  body: GeneratePayload,
-): Promise<GenerateResumeResponse> {
-  const res = await fetch("/api/generate-resume", {
+const fetchJsonOptions: RequestInit = {
+  credentials: "same-origin",
+  redirect: "manual",
+};
+
+async function parseApiError(res: Response): Promise<string> {
+  if (res.status === 401) {
+    const text = await res.text();
+    try {
+      const j = JSON.parse(text) as { detail?: unknown };
+      if (typeof j.detail === "string" && j.detail.trim()) return j.detail.trim();
+    } catch {
+      void 0;
+    }
+    return SESSION_EXPIRED_DETAIL;
+  }
+
+  const text = await res.text();
+  try {
+    const j = JSON.parse(text) as { detail?: unknown };
+    if (typeof j.detail === "string" && j.detail.trim()) return j.detail.trim();
+  } catch {
+    void 0;
+  }
+
+  const trimmed = text.trim().slice(0, 400);
+  if (trimmed.startsWith("<") || trimmed.toLowerCase().includes("<!doctype")) {
+    return "Unexpected response from the server. Try refreshing the page or signing in again.";
+  }
+  if (trimmed) return trimmed;
+  return res.statusText.trim() || `Request failed (${res.status})`;
+}
+
+function assertFollowableResponse(res: Response): void {
+  if (res.type === "opaqueredirect") {
+    throw new Error(SESSION_EXPIRED_DETAIL);
+  }
+  if (res.status >= 300 && res.status < 400) {
+    throw new Error(SESSION_EXPIRED_DETAIL);
+  }
+}
+
+async function postJsonOrThrow(
+  url: string,
+  body: unknown,
+): Promise<Response> {
+  const res = await fetch(url, {
+    ...fetchJsonOptions,
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  assertFollowableResponse(res);
+  return res;
+}
+
+export async function generateResume(
+  body: GeneratePayload,
+): Promise<GenerateResumeResponse> {
+  const res = await postJsonOrThrow("/api/generate-resume", body);
   if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const j = (await res.json()) as { detail?: string | unknown };
-      if (typeof j.detail === "string") detail = j.detail;
-    } catch {
-      /* ignore */
-    }
-    throw new Error(detail || `Request failed (${res.status})`);
+    throw new Error(await parseApiError(res));
   }
   return res.json() as Promise<GenerateResumeResponse>;
 }
@@ -62,20 +110,9 @@ export async function generateResume(
 export async function generateCoverLetter(
   body: CoverLetterPayload,
 ): Promise<GenerateCoverLetterResponse> {
-  const res = await fetch("/api/generate-cover-letter", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const res = await postJsonOrThrow("/api/generate-cover-letter", body);
   if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const j = (await res.json()) as { detail?: string | unknown };
-      if (typeof j.detail === "string") detail = j.detail;
-    } catch {
-      /* ignore */
-    }
-    throw new Error(detail || `Request failed (${res.status})`);
+    throw new Error(await parseApiError(res));
   }
   return res.json() as Promise<GenerateCoverLetterResponse>;
 }

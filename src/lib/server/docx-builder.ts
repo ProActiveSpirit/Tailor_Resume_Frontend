@@ -5,19 +5,8 @@ import {
   Paragraph,
   TextRun,
 } from "docx";
+import { contactLines } from "@/lib/resume-contact-lines";
 import type { Resume } from "@/lib/types";
-
-function contactLine(resume: Resume): string {
-  return [
-    resume.contact.email,
-    resume.contact.phone,
-    resume.contact.location,
-    resume.contact.linkedin,
-    resume.contact.website,
-  ]
-    .filter((s): s is string => Boolean(s && String(s).trim()))
-    .join(" · ");
-}
 
 /** Build a Word document matching the resume preview structure (simple layout). */
 export async function resumeToDocxBuffer(resume: Resume): Promise<Buffer> {
@@ -45,15 +34,16 @@ export async function resumeToDocxBuffer(resume: Resume): Promise<Buffer> {
     );
   }
 
-  const line = contactLine(resume);
-  if (line) {
+  const lines = contactLines(resume);
+  lines.forEach((line, i) => {
+    const isLast = i === lines.length - 1;
     children.push(
       new Paragraph({
         children: [new TextRun({ text: line, size: 22, color: "666666" })],
-        spacing: { after: 240 },
+        spacing: { after: isLast ? 240 : 60 },
       }),
     );
-  }
+  });
 
   children.push(
     new Paragraph({
@@ -182,6 +172,27 @@ export async function resumeToDocxBuffer(resume: Resume): Promise<Buffer> {
     sections: [{ children }],
   });
 
+  const buf = await Packer.toBuffer(doc);
+  return Buffer.from(buf);
+}
+
+/** Plain-text.cover letter as a minimal Word document (paragraphs split on blank lines). */
+export async function coverLetterToDocxBuffer(text: string): Promise<Buffer> {
+  const normalized = text.replace(/\r\n/g, "\n").trim();
+  const blocks = normalized
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const children: Paragraph[] = blocks.map(
+    (block) =>
+      new Paragraph({
+        text: block,
+        spacing: { after: 200 },
+      }),
+  );
+  const doc = new Document({
+    sections: [{ children }],
+  });
   const buf = await Packer.toBuffer(doc);
   return Buffer.from(buf);
 }

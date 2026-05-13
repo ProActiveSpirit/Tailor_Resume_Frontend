@@ -1,11 +1,21 @@
 import { AdminUserRoleTable } from "@/components/admin-user-role-table";
 import { UserMenu } from "@/components/user-menu";
 import { mapProfileRows } from "@/lib/map-profile-rows";
+import { fetchProfileRole } from "@/lib/supabase/profile-role";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 
 export default async function AdminUsersPage() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  let showLogsLink = false;
+  if (user) {
+    const role = await fetchProfileRole(supabase, user.id, user.email);
+    showLogsLink = role === "admin";
+  }
+
   const { data, error } = await supabase
     .from("profiles")
     .select("id, email, role")
@@ -46,12 +56,14 @@ export default async function AdminUsersPage() {
             before using the workspace.
           </p>
           <p className="mt-4 flex flex-wrap gap-4 text-sm">
-            <Link
-              href="/admin/logs"
-              className="font-medium text-accent underline-offset-2 transition hover:text-accent-pressed hover:underline"
-            >
-              Generation log
-            </Link>
+            {showLogsLink ? (
+              <Link
+                href="/admin/logs"
+                className="font-medium text-accent underline-offset-2 transition hover:text-accent-pressed hover:underline"
+              >
+                Generation log
+              </Link>
+            ) : null}
             <Link
               href="/"
               className="font-medium text-accent underline-offset-2 transition hover:text-accent-pressed hover:underline"

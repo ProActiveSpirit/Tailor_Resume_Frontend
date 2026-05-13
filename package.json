@@ -10,9 +10,13 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.2",
+    "@heyputer/puter.js": "^2.3.2",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.105.3",
+    "cheerio": "^1.2.0",
     "docx": "^9.6.1",
+    "he": "^1.2.0",
+    "jszip": "^3.10.1",
     "next": "16.2.1",
     "openai": "^5.23.2",
     "pdfkit": "^0.18.0",
@@ -23,6 +27,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/he": "^1.2.3",
     "@types/node": "25.6.0",
     "@types/pdfkit": "^0.17.6",
     "@types/react": "^19",

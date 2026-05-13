@@ -53,6 +53,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
+  if (supabase && path.startsWith("/admin")) {
+    const role = await fetchProfileRole(supabase, user.id, user.email);
+    if (role === "normal") {
+      return redirectWithSession(request, supabaseResponse, "/pending");
+    }
+  }
+
   if (supabase && (path === "/" || path === "/pending")) {
     const role = await fetchProfileRole(supabase, user.id, user.email);
     if (path === "/" && role === "normal") {

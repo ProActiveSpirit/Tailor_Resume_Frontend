@@ -1,3 +1,15 @@
+/** True if non-empty and parseable as http(s) URL (for job links, optional LinkedIn, etc.). */
+export function isValidOptionalHttpUrl(raw: string): boolean {
+  const s = raw.trim();
+  if (!s) return false;
+  try {
+    const u = new URL(s);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 /** Pragmatic email check aligned with common backend EmailStr shapes. */
 export function isValidEmailAddress(s: string): boolean {
   const t = s.trim();

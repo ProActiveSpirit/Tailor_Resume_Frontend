@@ -17,7 +17,8 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     .eq("id", user.id)
     .maybeSingle();
 
-  if (profile?.role !== "admin") redirect("/");
+  const role = profile?.role;
+  if (role !== "admin" && role !== "developer") redirect("/");
 
   return <>{children}</>;
 }

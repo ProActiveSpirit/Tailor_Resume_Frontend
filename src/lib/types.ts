@@ -54,4 +54,11 @@ export type GenerationMeta = {
 export type GenerateResumeResponse = {
   resume: Resume;
   generation_meta: GenerationMeta;
+  company_name: string | null;
+  job_title: string | null;
+};
+
+export type GenerateCoverLetterResponse = {
+  letter: string;
+  generation_meta: GenerationMeta;
 };

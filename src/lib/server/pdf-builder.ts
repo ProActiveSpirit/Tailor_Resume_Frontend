@@ -1,5 +1,6 @@
 import type { Readable } from "stream";
 import PDFDocument from "pdfkit";
+import { contactLines } from "@/lib/resume-contact-lines";
 import type { PdfTemplate, Resume } from "@/lib/types";
 
 const LETTER_W = 612;
@@ -375,15 +376,9 @@ export function resumeToPdfBytes(
       );
     }
 
-    const contactBits: string[] = [];
-    if (resume.contact.email) contactBits.push(resume.contact.email);
-    if (resume.contact.phone) contactBits.push(resume.contact.phone);
-    if (resume.contact.location) contactBits.push(resume.contact.location);
-    if (resume.contact.linkedin) contactBits.push(resume.contact.linkedin);
-    if (resume.contact.website) contactBits.push(resume.contact.website);
-    if (contactBits.length > 0) {
+    for (const bit of contactLines(resume)) {
       y = write(
-        contactBits.join(" · "),
+        bit,
         theme.f.normal,
         theme.bodySize,
         bodyInk(theme),

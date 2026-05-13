@@ -1,20 +1,12 @@
 import OpenAI from "openai";
 import type { GenerationMeta, Resume } from "@/lib/types";
 import {
-  applyRequestOverrides,
   buildUserPayload,
+  JSON_OBJECT_ONLY_FOOTER,
   STATIC_TAILOR_INSTRUCTIONS,
 } from "./resume-prompt";
-import { normalizeLlmResumeJson } from "./resume-llm-normalize";
-import { type GenerateResumeRequestParsed, resumeSchema } from "./schemas";
-
-/** OpenAI: text-only chat + JSON object mode; resume JSON returned from the API route. */
-const JSON_OBJECT_ONLY_FOOTER = `
-
-Output format: respond with a single JSON object only (no markdown code fences, no prose before or after).
-The JSON must match the resume structure: target_title, contact (name, email, phone, location, linkedin, website),
-summary, skills (array of strings only), experience[] (not professional_experience), education[] (each entry has dates and details, string or null), projects[] (use [] if none).
-Each experience item must include "dates" (string period); skills must not be objects. No extra root keys.`;
+import { parseTailoredGenerationFromLlm } from "./tailored-output-parse";
+import { type GenerateResumeRequestParsed } from "./schemas";
 
 const GPT41_RATE_MTUSD = { in: 2.0, out: 8.0 } as const;
 
@@ -45,14 +37,19 @@ function estimateOpenAiCostUsd(
 export async function generateResumeOpenAI(
   body: GenerateResumeRequestParsed,
   modelId: string,
-): Promise<{ resume: Resume; generationMeta: GenerationMeta }> {
+): Promise<{
+  resume: Resume;
+  generationMeta: GenerationMeta;
+  company_name: string | null;
+  job_title: string | null;
+}> {
   const apiKey = (process.env.OPENAI_API_KEY ?? "").trim();
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not set");
   }
 
   const resolvedModel = modelId.trim();
-  const maxTokens = Math.min(body.anthropic_max_tokens ?? 6144, 8192);
+  const maxTokens = Math.min(body.anthropic_max_tokens ?? 8192, 8192);
 
   const client = new OpenAI({ apiKey });
 
@@ -101,8 +98,7 @@ export async function generateResumeOpenAI(
   } catch {
     throw new Error("Model returned non-JSON output");
   }
-  const parsed = resumeSchema.parse(normalizeLlmResumeJson(data));
-  const resume = applyRequestOverrides(parsed, body);
+  const { company_name, job_title, resume } = parseTailoredGenerationFromLlm(data, body);
 
-  return { resume, generationMeta };
+  return { resume, generationMeta, company_name, job_title };
 }

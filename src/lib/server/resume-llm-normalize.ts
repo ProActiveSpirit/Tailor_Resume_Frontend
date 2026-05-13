@@ -1,5 +1,5 @@
 /**
- * Coerce common LLM JSON drift into shapes compatible with resumeSchema (strict).
+ * Coerce common LLM JSON drift into shapes compatible with resumeSchema.
  */
 
 const ROOT_STRIP_KEYS = new Set(["ats_keywords", "tailoring_notes"]);
@@ -24,6 +24,19 @@ function coerceSkillEntry(entry: unknown): string | undefined {
   return undefined;
 }
 
+function normalizeBulletArray(raw: unknown, maxItems: number): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const b of raw) {
+    if (typeof b === "string") {
+      const t = b.trim();
+      if (t !== "") out.push(t);
+    }
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
 function normalizeExperienceItem(item: unknown): unknown {
   if (!item || typeof item !== "object" || Array.isArray(item)) return item;
   const e = { ...(item as Record<string, unknown>) };
@@ -35,7 +48,25 @@ function normalizeExperienceItem(item: unknown): unknown {
   }
   delete e.date_range;
 
+  e.bullets = normalizeBulletArray(e.bullets, 12);
+
+  const dOut =
+    typeof e.dates === "string"
+      ? e.dates.trim()
+      : e.dates != null && typeof e.dates !== "string"
+        ? String(e.dates).trim().slice(0, 80)
+        : "";
+  if (!dOut) e.dates = "—";
+  else e.dates = dOut.slice(0, 80);
+
   return e;
+}
+
+function normalizeProjectItem(item: unknown): unknown {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+  const p = { ...(item as Record<string, unknown>) };
+  p.bullets = normalizeBulletArray(p.bullets, 8);
+  return p;
 }
 
 function stringOrNullMax(v: unknown, maxLen: number): string | null {
@@ -71,6 +102,8 @@ function resolveExperienceArray(root: Record<string, unknown>): unknown[] | unde
   if (Array.isArray(root.experience)) return root.experience;
   if (Array.isArray(root.professional_experience)) return root.professional_experience;
   if (Array.isArray(root.work_experience)) return root.work_experience;
+  if (Array.isArray(root.employment_history)) return root.employment_history;
+  if (Array.isArray(root.positions)) return root.positions;
   return undefined;
 }
 
@@ -88,12 +121,16 @@ export function normalizeLlmResumeJson(input: unknown): unknown {
   const expArr = resolveExperienceArray(root);
   delete root.professional_experience;
   delete root.work_experience;
+  delete root.employment_history;
+  delete root.positions;
   if (expArr !== undefined) {
     root.experience = expArr.map((item) => normalizeExperienceItem(item));
   }
 
   if (!Array.isArray(root.projects)) {
     root.projects = [];
+  } else {
+    root.projects = root.projects.map((item) => normalizeProjectItem(item));
   }
 
   if (!Array.isArray(root.education)) {

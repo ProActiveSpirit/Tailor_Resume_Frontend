@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
-import { generateResumeStructured } from "@/lib/server/llm-generate";
+import { generateCoverLetterStructured } from "@/lib/server/cover-letter-generate";
 import {
   mapAnthropicToResponse,
   mapOpenAIToResponse,
 } from "@/lib/server/llm-http-errors";
-import { generateResumeRequestSchema } from "@/lib/server/schemas";
+import { generateCoverLetterRequestSchema } from "@/lib/server/schemas";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -30,7 +30,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   let body;
   try {
-    body = generateResumeRequestSchema.parse(json);
+    body = generateCoverLetterRequestSchema.parse(json);
   } catch (e) {
     if (e instanceof ZodError) {
       return NextResponse.json({ detail: e.message }, { status: 422 });
@@ -39,14 +39,10 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   try {
-    // LLMs return resume JSON only (structured text).
-    const { resume, generationMeta, company_name, job_title } =
-      await generateResumeStructured(body);
+    const { letter, generationMeta } = await generateCoverLetterStructured(body);
     return NextResponse.json({
-      resume,
+      letter,
       generation_meta: generationMeta,
-      company_name,
-      job_title,
     });
   } catch (err) {
     if (err instanceof ZodError) {
@@ -74,11 +70,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       return NextResponse.json({ detail: "Model returned non-JSON output" }, { status: 502 });
     }
 
-    console.error("generate-resume error", err);
+    console.error("generate-cover-letter error", err);
     const detail =
       err instanceof Error && err.message.trim()
         ? err.message.trim().slice(0, 800)
-        : "Resume generation failed. Try again or shorten inputs.";
+        : "Cover letter generation failed. Try again or shorten inputs.";
     return NextResponse.json({ detail }, { status: 502 });
   }
 }

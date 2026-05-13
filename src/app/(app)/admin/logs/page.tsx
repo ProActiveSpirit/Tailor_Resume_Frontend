@@ -5,9 +5,22 @@ import {
 import { UserMenu } from "@/components/user-menu";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 export default async function AdminLogsPage() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (profile?.role !== "admin") redirect("/admin/users");
+  }
+
   const { data, error } = await supabase
     .from("generation_logs")
     .select("*")

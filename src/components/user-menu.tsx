@@ -1,5 +1,6 @@
 "use client";
 
+import { useAppRoleBootstrap } from "@/components/app-role-provider";
 import { createClient } from "@/lib/supabase/client";
 import { fetchProfileRole } from "@/lib/supabase/profile-role";
 import type { AppRole } from "@/lib/roles";
@@ -18,10 +19,11 @@ function initialsFromEmail(email: string): string {
 }
 
 export function UserMenu() {
+  const { initialAppRole, initialEmail } = useAppRoleBootstrap();
   const router = useRouter();
   const menuId = useId();
-  const [email, setEmail] = useState<string | null>(null);
-  const [appRole, setAppRole] = useState<AppRole>("normal");
+  const [email, setEmail] = useState<string | null>(initialEmail);
+  const [appRole, setAppRole] = useState<AppRole>(initialAppRole);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -34,13 +36,18 @@ export function UserMenu() {
   useEffect(() => {
     const supabase = createClient();
     let cancelled = false;
-    supabase.auth.getSession().then(({ data: { session } }) => {
+
+    void (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (cancelled) return;
-      const u = session?.user;
+      const u = user;
       setEmail(u?.email ?? null);
       if (u?.id) void fetchRole(u.id, u.email ?? null);
       else setAppRole("normal");
-    });
+    })();
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_evt, session) => {
@@ -82,7 +89,8 @@ export function UserMenu() {
   if (!email) return null;
 
   const initials = initialsFromEmail(email);
-  const showMembers = appRole === "admin";
+  const showMembers = appRole === "admin" || appRole === "developer";
+  const showGenerationLog = appRole === "admin";
 
   const itemClass =
     "block w-full px-3 py-2 text-left text-sm text-stone-800 transition hover:bg-accent-soft/60 rounded-md";
@@ -116,24 +124,24 @@ export function UserMenu() {
             Profile
           </Link>
           {showMembers ? (
-            <>
-              <Link
-                href="/admin/users"
-                role="menuitem"
-                className={itemClass}
-                onClick={() => setOpen(false)}
-              >
-                Members
-              </Link>
-              <Link
-                href="/admin/logs"
-                role="menuitem"
-                className={itemClass}
-                onClick={() => setOpen(false)}
-              >
-                Log
-              </Link>
-            </>
+            <Link
+              href="/admin/users"
+              role="menuitem"
+              className={itemClass}
+              onClick={() => setOpen(false)}
+            >
+              Members
+            </Link>
+          ) : null}
+          {showGenerationLog ? (
+            <Link
+              href="/admin/logs"
+              role="menuitem"
+              className={itemClass}
+              onClick={() => setOpen(false)}
+            >
+              Log
+            </Link>
           ) : null}
           <button
             type="button"

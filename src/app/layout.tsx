@@ -1,17 +1,37 @@
 import type { Metadata } from "next";
-import { Fraunces, Source_Sans_3 } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const fraunces = Fraunces({
+const fraunces = localFont({
+  src: [
+    {
+      path: "../fonts/fraunces-latin.woff2",
+      style: "normal",
+    },
+    {
+      path: "../fonts/fraunces-latin-italic.woff2",
+      style: "italic",
+    },
+  ],
   variable: "--font-display",
-  subsets: ["latin"],
   display: "swap",
+  weight: "100 900",
 });
 
-const sourceSans = Source_Sans_3({
+const sourceSans = localFont({
+  src: [
+    {
+      path: "../fonts/source-sans-3-latin.woff2",
+      style: "normal",
+    },
+    {
+      path: "../fonts/source-sans-3-latin-italic.woff2",
+      style: "italic",
+    },
+  ],
   variable: "--font-body",
-  subsets: ["latin"],
   display: "swap",
+  weight: "200 900",
 });
 
 export const metadata: Metadata = {

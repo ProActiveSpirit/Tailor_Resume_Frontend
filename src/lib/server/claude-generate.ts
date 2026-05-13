@@ -7,15 +7,13 @@ import type {
 } from "@anthropic-ai/sdk/resources/messages/messages";
 import type { GenerationMeta, Resume } from "@/lib/types";
 import {
-  applyRequestOverrides,
   buildUserPayload,
   STATIC_TAILOR_INSTRUCTIONS,
 } from "./resume-prompt";
-import { normalizeLlmResumeJson } from "./resume-llm-normalize";
+import { parseTailoredGenerationFromLlm } from "./tailored-output-parse";
 import {
   type GenerateResumeRequestParsed,
-  resumeJsonSchema,
-  resumeSchema,
+  tailoredGenerationJsonSchema,
 } from "./schemas";
 
 const MODEL_RATE_MTUSD: readonly (readonly [string, number, number])[] = [
@@ -126,18 +124,23 @@ function estimateCostUsd(
 export async function generateResumeAnthropic(
   body: GenerateResumeRequestParsed,
   modelId: string,
-): Promise<{ resume: Resume; generationMeta: GenerationMeta }> {
+): Promise<{
+  resume: Resume;
+  generationMeta: GenerationMeta;
+  company_name: string | null;
+  job_title: string | null;
+}> {
   const apiKey = (process.env.ANTHROPIC_API_KEY ?? "").trim();
   if (!apiKey) {
     throw new Error("ANTHROPIC_API_KEY is not set");
   }
 
   const resolvedModel = modelId.trim();
-  const maxTokens = Math.min(body.anthropic_max_tokens ?? 6144, 8192);
+  const maxTokens = Math.min(body.anthropic_max_tokens ?? 8192, 8192);
 
   const client = new Anthropic({ apiKey });
 
-  const schema = resumeJsonSchema();
+  const schema = tailoredGenerationJsonSchema();
 
   const systemBlocks: TextBlockParam[] = [
     {
@@ -204,8 +207,7 @@ export async function generateResumeAnthropic(
   } catch {
     throw new Error("Model returned non-JSON output");
   }
-  const parsed = resumeSchema.parse(normalizeLlmResumeJson(data));
-  const resume = applyRequestOverrides(parsed, body);
+  const { company_name, job_title, resume } = parseTailoredGenerationFromLlm(data, body);
 
-  return { resume, generationMeta };
+  return { resume, generationMeta, company_name, job_title };
 }

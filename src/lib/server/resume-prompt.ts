@@ -21,10 +21,13 @@ Rules (inside \`resume\`):
 - Each experience entry must use the field \`dates\` (one string for the employment period). Do not use \`date_range\` or other aliases.
 - Do not add extra keys inside \`resume\` outside the schema (e.g. \`ats_keywords\`, \`tailoring_notes\`). Weave relevant keywords into summary, skills, and experience naturally.
 - Optimize for enterprise ATS systems used by large companies (Workday, Taleo, SuccessFactors, iCIMS, Greenhouse, Lever): use standard section content, searchable plain-text terminology, consistent dates, and no decorative or keyword-stuffed phrasing.
-- Align wording with the job description: mirror exact must-have tools, certifications, methodologies, and role title language naturally in summary, skills, and bullets where truthful.
-- Put the strongest truthful role match in \`target_title\` and the first sentence of \`summary\`; do not leave \`target_title\` null when the job title is clear.
-- Prefer strong action verbs, concise bullets (1-2 lines each), and quantified impact when the source provides numbers.
-- Skills: prioritize exact JD must-have terms first, then related truthful tools; keep the list concise and deduplicated. Never add a skill just because it appears in the job description.
+- Treat must-have requirements as highest priority. Mirror exact job-description language for supported tools, certifications, methodologies, domain phrases, and responsibilities in \`target_title\`, the first summary sentence, skills, and experience bullets.
+- Put the strongest truthful role match in \`target_title\`, preferably the job title or closest supported variant; do not leave \`target_title\` null when the job title is clear.
+- Start the summary with the target role and the strongest 2-4 truthful must-have phrases. Keep it recruiter-readable, not a comma-separated keyword list.
+- Each experience entry must contain exactly 3 concise bullets: one role-alignment bullet, one measurable impact bullet when evidence exists, and one tools/process/leadership bullet matched to the job description.
+- Prefer strong action verbs, concise bullets (1-2 lines each), and quantified impact when the source provides numbers. If exact numbers are not present, use truthful scope words from the source (e.g. enterprise clients, cross-functional teams, production workflows) rather than inventing metrics.
+- Skills: produce 8-18 concise, deduplicated strings. Put exact JD must-have terms first, then related truthful tools and responsibilities. Never add a skill just because it appears in the job description.
+- Ensure every supported must-have skill or responsibility appears at least once in either Skills or an experience bullet, and place the most important supported terms in both Skills and evidence bullets.
 - Include one \`experience\` entry for each distinct employer and employment period described in the candidate source material. Do not merge separate jobs into one entry and do not drop entire roles.
 - Order experience reverse-chronologically where dates allow, without omitting roles to do so.
 - If you need a shorter resume, shorten the summary, use fewer bullets per role, or trim skills—never omit an employer/role that appears in the source.
@@ -39,9 +42,9 @@ Required top-level keys: "company_name" (string or null — hiring employer from
 
 The "resume" object must have: target_title, contact (name, email, phone, location, linkedin, website),
 summary, skills (array of strings only), experience[] (not professional_experience), education[] (each entry has dates and details, string or null), projects[] (use [] if none).
-Each experience item must include "dates" (string period); skills must not be objects. No keys inside "resume" beyond the schema.
+Each experience item must include "dates" (string period) and exactly 3 bullets; skills must not be objects. No keys inside "resume" beyond the schema.
 Include every distinct employer/role from the candidate source material as its own experience[] entry; shorten bullets or summary instead of dropping roles.
-Enterprise ATS optimization: use exact job-description terminology only when supported by candidate facts, keep skills concise and deduplicated, set target_title when the job title is clear, and avoid keyword stuffing.`;
+Enterprise ATS optimization: use exact job-description terminology only when supported by candidate facts, keep skills concise and deduplicated, set target_title when the job title is clear, put strongest must-have phrases in the first summary sentence, and avoid keyword stuffing.`;
 
 export function buildUserPayload(body: GenerateResumeRequestParsed): string {
   const parts: string[] = [
@@ -64,10 +67,16 @@ export function buildUserPayload(body: GenerateResumeRequestParsed): string {
 export function applyRequestOverrides(
   parsed: ResumeParsed,
   body: GenerateResumeRequestParsed,
+  fallbackTargetTitle?: string | null,
 ): Resume {
+  const targetTitle =
+    parsed.target_title?.trim() ||
+    (typeof fallbackTargetTitle === "string" ? fallbackTargetTitle.trim() : "") ||
+    null;
+
   return {
     ...parsed,
-    target_title: null,
+    target_title: targetTitle,
     contact: {
       ...parsed.contact,
       name: body.display_name,

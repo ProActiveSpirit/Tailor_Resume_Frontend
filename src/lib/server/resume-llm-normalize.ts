@@ -37,6 +37,15 @@ function normalizeBulletArray(raw: unknown, maxItems: number): string[] {
   return out;
 }
 
+function normalizeNullableString(v: unknown, maxLen: number): string | null {
+  if (v === undefined || v === null) return null;
+  if (typeof v === "number" && Number.isFinite(v)) return String(v).slice(0, maxLen);
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  if (t === "") return null;
+  return t.length > maxLen ? t.slice(0, maxLen) : t;
+}
+
 function normalizeExperienceItem(item: unknown): unknown {
   if (!item || typeof item !== "object" || Array.isArray(item)) return item;
   const e = { ...(item as Record<string, unknown>) };
@@ -48,7 +57,8 @@ function normalizeExperienceItem(item: unknown): unknown {
   }
   delete e.date_range;
 
-  e.bullets = normalizeBulletArray(e.bullets, 12);
+  e.location = normalizeNullableString(e.location, 200);
+  e.bullets = normalizeBulletArray(e.bullets, 3);
 
   const dOut =
     typeof e.dates === "string"
@@ -65,17 +75,13 @@ function normalizeExperienceItem(item: unknown): unknown {
 function normalizeProjectItem(item: unknown): unknown {
   if (!item || typeof item !== "object" || Array.isArray(item)) return item;
   const p = { ...(item as Record<string, unknown>) };
+  p.description = normalizeNullableString(p.description, 600);
   p.bullets = normalizeBulletArray(p.bullets, 8);
   return p;
 }
 
 function stringOrNullMax(v: unknown, maxLen: number): string | null {
-  if (v === undefined || v === null) return null;
-  if (typeof v === "number" && Number.isFinite(v)) return String(v).slice(0, maxLen);
-  if (typeof v !== "string") return null;
-  const t = v.trim();
-  if (t === "") return null;
-  return t.length > maxLen ? t.slice(0, maxLen) : t;
+  return normalizeNullableString(v, maxLen);
 }
 
 function normalizeEducationItem(item: unknown): unknown {
@@ -107,6 +113,18 @@ function resolveExperienceArray(root: Record<string, unknown>): unknown[] | unde
   return undefined;
 }
 
+function normalizeContact(root: Record<string, unknown>): void {
+  if (!root.contact || typeof root.contact !== "object" || Array.isArray(root.contact)) {
+    return;
+  }
+  const contact = { ...(root.contact as Record<string, unknown>) };
+  contact.phone = normalizeNullableString(contact.phone, 80);
+  contact.location = normalizeNullableString(contact.location, 200);
+  contact.linkedin = normalizeNullableString(contact.linkedin, 300);
+  contact.website = normalizeNullableString(contact.website, 300);
+  root.contact = contact;
+}
+
 export function normalizeLlmResumeJson(input: unknown): unknown {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     return input;
@@ -117,6 +135,8 @@ export function normalizeLlmResumeJson(input: unknown): unknown {
   for (const k of ROOT_STRIP_KEYS) {
     delete root[k];
   }
+
+  normalizeContact(root);
 
   const expArr = resolveExperienceArray(root);
   delete root.professional_experience;

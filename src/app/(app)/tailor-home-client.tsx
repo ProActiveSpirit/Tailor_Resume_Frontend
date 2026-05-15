@@ -37,6 +37,7 @@ import {
   isValidEmailAddress,
   isValidOptionalHttpUrl,
 } from "@/lib/auth-validation";
+import { formatResumeDateRange } from "@/lib/resume-date-format";
 import type { GenerateResumeResponse, GenerationMeta, Resume } from "@/lib/types";
 import { contactLines } from "@/lib/resume-contact-lines";
 import {
@@ -72,7 +73,7 @@ function readLastWorkshopEditor(): "system" | "experience" {
 
 const SYSTEM_PROMPT_SOFT_WARN_CHARS = 12_000;
 
-const DEFAULT_SYSTEM_PROMPT = `You tailor resumes for specific roles. Output must be honest: every employer, date, degree, and metric must appear in the candidate's source material (or be fairly implied there, e.g. city from context). Give each distinct employer/role from that source its own entry in experience[]—do not drop roles to save space. Rephrase for clarity and impact; do not fabricate.`;
+const DEFAULT_SYSTEM_PROMPT = `You are an expert ATS resume strategist. Tailor the resume to the target job using only truthful facts from the candidate source material. Preserve every distinct employer/role and employment date. Set a clear target title from the job title or closest truthful supported variant. Put the strongest supported must-have phrases in the first summary sentence, order 8-18 skills by exact job-description must-haves first, and weave supported requirements into experience evidence. For each experience entry, write exactly 3 concise bullets: one role-alignment bullet, one measurable impact bullet when evidence exists, and one tools/process/leadership bullet matched to the job description. Mirror important job-description keywords naturally in the target title, summary, skills, and bullets, but never fabricate, exaggerate, or keyword-stuff. Keep the resume recruiter-readable, ATS-safe, and focused on strongest supported evidence.`;
 
 function buildAtsUpgradeSystemPrompt(
   basePrompt: string,
@@ -93,7 +94,7 @@ function buildAtsUpgradeSystemPrompt(
   return `${basePrompt.trim()}
 
 ATS upgrade request:
-- Regenerate the resume to improve the enterprise ATS simulation score while preserving truthfulness.
+- Regenerate the resume to improve the enterprise ATS simulation score while preserving truthfulness and recruiter readability.
 - Current ATS profile: ${ats.platform.label} (${ats.platform.strictness.replace("_", " ")}).
 - Current score: ${ats.score}/100.
 - Score reasons:
@@ -102,6 +103,13 @@ ${ats.topReasons.map((reason) => `  - ${reason}`).join("\n") || "  - No specific
 ${missingByGroup.length ? missingByGroup.join("\n") : "- No major missing requirement groups."}
 - Priority fixes:
 ${prioritySuggestions.length ? prioritySuggestions.join("\n") : "- Keep the resume concise, clear, and ATS-readable."}
+
+Upgrade instructions:
+- Set target_title to the exact job title or closest truthful supported variant.
+- Rewrite the first summary sentence to include the target role and the strongest supported must-have phrases.
+- Reorder skills to 8-18 concise items, placing exact supported must-have terms first.
+- Rewrite experience bullets so supported must-have requirements appear as evidence inside bullets, not only as skills.
+- Use strong action verbs and truthful metrics when present in the source; if no numbers exist, use truthful scope without inventing metrics.
 
 Apply these findings by improving the target title, summary, skills, and experience bullets where the candidate source material supports it. Do not invent claims, do not add unsupported skills, and do not keyword-stuff. Use exact job-description terminology only when it is truthful and supported by the candidate facts.`;
 }
@@ -374,7 +382,9 @@ function ResumePreview({ resume, compact }: { resume: Resume; compact?: boolean 
                   {exp.title} — {exp.company}
                   {exp.location ? ` (${exp.location})` : ""}
                 </span>
-                <span className="text-xs text-stone-500">{exp.dates}</span>
+                <span className="whitespace-nowrap text-xs text-stone-500">
+                  {formatResumeDateRange(exp.dates)}
+                </span>
               </div>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-stone-700">
                 {exp.bullets.map((b, j) => (

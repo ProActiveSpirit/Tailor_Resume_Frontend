@@ -114,7 +114,7 @@ const experienceItemSchema = z.object({
   company: z.string().min(1).max(200),
   location: z.string().max(200).nullable(),
   dates: z.string().min(1).max(80),
-  bullets: z.array(z.string()).max(12),
+  bullets: z.array(z.string()).length(3),
 });
 
 const educationItemSchema = z.object({
@@ -295,6 +295,29 @@ function forceNoAdditionalProperties(obj: unknown): void {
   }
 }
 
+function forceRequiredObjectProperties(obj: unknown): void {
+  if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+    const d = obj as Record<string, unknown>;
+    const properties = d.properties;
+    if (d.type === "object" && properties && typeof properties === "object") {
+      d.required = Object.keys(properties);
+    }
+    for (const v of Object.values(d)) forceRequiredObjectProperties(v);
+  } else if (Array.isArray(obj)) {
+    for (const item of obj) forceRequiredObjectProperties(item);
+  }
+}
+
+function stripSchemaDefaults(obj: unknown): void {
+  if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+    const d = obj as Record<string, unknown>;
+    delete d.default;
+    for (const v of Object.values(d)) stripSchemaDefaults(v);
+  } else if (Array.isArray(obj)) {
+    for (const item of obj) stripSchemaDefaults(item);
+  }
+}
+
 function schemaDefinesArray(o: Record<string, unknown>): boolean {
   const t = o.type;
   if (t === "array") return true;
@@ -336,6 +359,19 @@ export function tailoredGenerationJsonSchema(): Record<string, unknown> {
   delete raw.$schema;
   forceNoAdditionalProperties(raw);
   stripUnsupportedAnthropicArrayKeywords(raw);
+  return raw;
+}
+
+/** OpenAI strict function-calling schema for tailored generation. */
+export function tailoredGenerationOpenAiFunctionSchema(): Record<string, unknown> {
+  const raw = zodToJsonSchema(tailoredGenerationSchema, {
+    $refStrategy: "none",
+    target: "jsonSchema7",
+  }) as Record<string, unknown>;
+  delete raw.$schema;
+  stripSchemaDefaults(raw);
+  forceNoAdditionalProperties(raw);
+  forceRequiredObjectProperties(raw);
   return raw;
 }
 

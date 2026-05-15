@@ -1,22 +1,122 @@
 import {
+  BorderStyle,
   Document,
-  HeadingLevel,
   Packer,
   Paragraph,
+  TabStopPosition,
+  TabStopType,
   TextRun,
 } from "docx";
 import { contactLines } from "@/lib/resume-contact-lines";
 import type { Resume } from "@/lib/types";
 
-/** Build a Word document matching the resume preview structure (simple layout). */
+const COLORS = {
+  ink: "17202A",
+  body: "263442",
+  muted: "657386",
+  accent: "225E66",
+  divider: "D4DDE4",
+} as const;
+
+const FONT = "Aptos";
+
+function stripBulletPrefix(line: string): string {
+  return line.trim().replace(/^[•\-\*]\s*/, "");
+}
+
+function sectionHeading(text: string): Paragraph {
+  return new Paragraph({
+    children: [
+      new TextRun({
+        text: text.toUpperCase(),
+        bold: true,
+        color: COLORS.accent,
+        size: 20,
+        font: FONT,
+        characterSpacing: 35,
+      }),
+    ],
+    border: {
+      bottom: {
+        color: COLORS.accent,
+        size: 5,
+        space: 3,
+        style: BorderStyle.SINGLE,
+      },
+    },
+    spacing: { before: 220, after: 120 },
+  });
+}
+
+function bodyParagraph(text: string, after = 160): Paragraph {
+  return new Paragraph({
+    children: [
+      new TextRun({
+        text,
+        color: COLORS.body,
+        size: 20,
+        font: FONT,
+      }),
+    ],
+    spacing: { after, line: 250 },
+  });
+}
+
+function mutedParagraph(text: string, after = 80): Paragraph {
+  return new Paragraph({
+    children: [
+      new TextRun({
+        text,
+        color: COLORS.muted,
+        size: 19,
+        font: FONT,
+      }),
+    ],
+    spacing: { after },
+  });
+}
+
+function bulletParagraph(text: string): Paragraph | null {
+  const clean = stripBulletPrefix(text);
+  if (!clean) return null;
+
+  return new Paragraph({
+    children: [
+      new TextRun({
+        text: "•",
+        color: COLORS.accent,
+        bold: true,
+        size: 19,
+        font: FONT,
+      }),
+      new TextRun({
+        text: `  ${clean}`,
+        color: COLORS.body,
+        size: 19,
+        font: FONT,
+      }),
+    ],
+    indent: { left: 260, hanging: 180 },
+    spacing: { after: 70, line: 230 },
+  });
+}
+
+/** Build a polished, recruiter-friendly Word resume. */
 export async function resumeToDocxBuffer(resume: Resume): Promise<Buffer> {
   const children: Paragraph[] = [];
 
   children.push(
     new Paragraph({
-      text: resume.contact.name,
-      heading: HeadingLevel.TITLE,
-      spacing: { after: 120 },
+      children: [
+        new TextRun({
+          text: resume.contact.name,
+          bold: true,
+          color: COLORS.ink,
+          size: 36,
+          font: FONT,
+        }),
+      ],
+      spacing: { after: 70 },
     }),
   );
 
@@ -26,157 +126,202 @@ export async function resumeToDocxBuffer(resume: Resume): Promise<Buffer> {
         children: [
           new TextRun({
             text: resume.target_title.trim(),
-            italics: true,
+            bold: true,
+            color: COLORS.accent,
+            size: 22,
+            font: FONT,
           }),
         ],
-        spacing: { after: 120 },
+        spacing: { after: 90 },
       }),
     );
   }
 
   const lines = contactLines(resume);
-  lines.forEach((line, i) => {
-    const isLast = i === lines.length - 1;
-    children.push(
-      new Paragraph({
-        children: [new TextRun({ text: line, size: 22, color: "666666" })],
-        spacing: { after: isLast ? 240 : 60 },
-      }),
-    );
-  });
-
-  children.push(
-    new Paragraph({
-      text: "Summary",
-      heading: HeadingLevel.HEADING_2,
-      spacing: { before: 120, after: 120 },
-    }),
-    new Paragraph({
-      text: resume.summary,
-      spacing: { after: 240 },
-    }),
-  );
-
-  children.push(
-    new Paragraph({
-      text: "Skills",
-      heading: HeadingLevel.HEADING_2,
-      spacing: { before: 120, after: 120 },
-    }),
-    new Paragraph({
-      text: resume.skills.join(" · "),
-      spacing: { after: 240 },
-    }),
-  );
-
-  children.push(
-    new Paragraph({
-      text: "Experience",
-      heading: HeadingLevel.HEADING_2,
-      spacing: { before: 120, after: 120 },
-    }),
-  );
-
-  for (const exp of resume.experience) {
-    const place = exp.location
-      ? `${exp.title} — ${exp.company} (${exp.location})`
-      : `${exp.title} — ${exp.company}`;
+  if (lines.length) {
     children.push(
       new Paragraph({
         children: [
-          new TextRun({ text: place, bold: true }),
-          new TextRun({ text: `\t${exp.dates}`, italics: true }),
+          new TextRun({
+            text: lines.join("  |  "),
+            size: 18,
+            color: COLORS.muted,
+            font: FONT,
+          }),
         ],
-        spacing: { after: 80 },
+        border: {
+          bottom: {
+            color: COLORS.divider,
+            size: 4,
+            space: 5,
+            style: BorderStyle.SINGLE,
+          },
+        },
+        spacing: { after: 180 },
+      }),
+    );
+  }
+
+  children.push(
+    sectionHeading("Summary"),
+    bodyParagraph(resume.summary, 190),
+    sectionHeading("Skills"),
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: resume.skills.join("  |  "),
+          color: COLORS.body,
+          size: 19,
+          font: FONT,
+        }),
+      ],
+      spacing: { after: 170, line: 230 },
+    }),
+    sectionHeading("Experience"),
+  );
+
+  for (const exp of resume.experience) {
+    const companyLine = exp.company + (exp.location ? ` | ${exp.location}` : "");
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: exp.title,
+            bold: true,
+            color: COLORS.ink,
+            size: 22,
+            font: FONT,
+          }),
+          new TextRun({
+            text: `\t${exp.dates}`,
+            italics: true,
+            color: COLORS.muted,
+            size: 18,
+            font: FONT,
+          }),
+        ],
+        tabStops: [
+          {
+            type: TabStopType.RIGHT,
+            position: TabStopPosition.MAX,
+          },
+        ],
+        spacing: { before: 60, after: 35 },
+        keepNext: true,
+      }),
+    );
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: companyLine,
+            color: COLORS.accent,
+            size: 19,
+            font: FONT,
+          }),
+        ],
+        spacing: { after: 65 },
+        keepNext: true,
       }),
     );
     for (const b of exp.bullets) {
-      children.push(
-        new Paragraph({
-          text: `• ${b}`,
-          spacing: { after: 60 },
-        }),
-      );
+      const bullet = bulletParagraph(b);
+      if (bullet) children.push(bullet);
     }
-    children.push(new Paragraph({ text: "", spacing: { after: 120 } }));
+    children.push(new Paragraph({ text: "", spacing: { after: 90 } }));
   }
 
   if (resume.education.length) {
-    children.push(
-      new Paragraph({
-        text: "Education",
-        heading: HeadingLevel.HEADING_2,
-        spacing: { before: 120, after: 120 },
-      }),
-    );
+    children.push(sectionHeading("Education"));
     for (const ed of resume.education) {
-      const meta = [ed.dates, ed.details].filter(Boolean).join(" · ");
+      const meta = [ed.dates, ed.details].filter(Boolean).join(" | ");
       children.push(
         new Paragraph({
           children: [
             new TextRun({
-              text: `${ed.degree} — ${ed.institution}`,
+              text: ed.degree,
               bold: true,
+              color: COLORS.ink,
+              size: 20,
+              font: FONT,
+            }),
+            new TextRun({
+              text: ` | ${ed.institution}`,
+              color: COLORS.body,
+              size: 20,
+              font: FONT,
             }),
           ],
-          spacing: { after: 40 },
+          spacing: { after: 35 },
         }),
       );
-      if (meta) {
-        children.push(
-          new Paragraph({
-            children: [new TextRun({ text: meta, size: 22, color: "666666" })],
-            spacing: { after: 120 },
-          }),
-        );
-      }
+      if (meta) children.push(mutedParagraph(meta, 110));
     }
   }
 
   if (resume.projects.length) {
-    children.push(
-      new Paragraph({
-        text: "Projects",
-        heading: HeadingLevel.HEADING_2,
-        spacing: { before: 120, after: 120 },
-      }),
-    );
+    children.push(sectionHeading("Projects"));
     for (const p of resume.projects) {
       children.push(
         new Paragraph({
-          children: [new TextRun({ text: p.name, bold: true })],
-          spacing: { after: 60 },
+          children: [
+            new TextRun({
+              text: p.name,
+              bold: true,
+              color: COLORS.ink,
+              size: 20,
+              font: FONT,
+            }),
+          ],
+          spacing: { after: 50 },
         }),
       );
-      if (p.description) {
-        children.push(
-          new Paragraph({
-            text: p.description,
-            spacing: { after: 60 },
-          }),
-        );
-      }
+      if (p.description) children.push(bodyParagraph(p.description, 60));
       for (const b of p.bullets) {
-        children.push(
-          new Paragraph({
-            text: `• ${b}`,
-            spacing: { after: 60 },
-          }),
-        );
+        const bullet = bulletParagraph(b);
+        if (bullet) children.push(bullet);
       }
-      children.push(new Paragraph({ text: "", spacing: { after: 120 } }));
+      children.push(new Paragraph({ text: "", spacing: { after: 90 } }));
     }
   }
 
   const doc = new Document({
-    sections: [{ children }],
+    styles: {
+      default: {
+        document: {
+          run: {
+            font: FONT,
+            size: 20,
+            color: COLORS.body,
+          },
+          paragraph: {
+            spacing: { line: 250 },
+          },
+        },
+      },
+    },
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: {
+              top: 620,
+              right: 700,
+              bottom: 620,
+              left: 700,
+            },
+          },
+        },
+        children,
+      },
+    ],
   });
 
   const buf = await Packer.toBuffer(doc);
   return Buffer.from(buf);
 }
 
-/** Plain-text.cover letter as a minimal Word document (paragraphs split on blank lines). */
+/** Plain-text cover letter as a clean Word document (paragraphs split on blank lines). */
 export async function coverLetterToDocxBuffer(text: string): Promise<Buffer> {
   const normalized = text.replace(/\r\n/g, "\n").trim();
   const blocks = normalized
@@ -186,12 +331,41 @@ export async function coverLetterToDocxBuffer(text: string): Promise<Buffer> {
   const children: Paragraph[] = blocks.map(
     (block) =>
       new Paragraph({
-        text: block,
-        spacing: { after: 200 },
+        children: [
+          new TextRun({
+            text: block,
+            font: FONT,
+            size: 21,
+            color: COLORS.body,
+          }),
+        ],
+        spacing: { after: 200, line: 260 },
       }),
   );
   const doc = new Document({
-    sections: [{ children }],
+    styles: {
+      default: {
+        document: {
+          run: { font: FONT, size: 21, color: COLORS.body },
+          paragraph: { spacing: { line: 260 } },
+        },
+      },
+    },
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: {
+              top: 720,
+              right: 720,
+              bottom: 720,
+              left: 720,
+            },
+          },
+        },
+        children,
+      },
+    ],
   });
   const buf = await Packer.toBuffer(doc);
   return Buffer.from(buf);

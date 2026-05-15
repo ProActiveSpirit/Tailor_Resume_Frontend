@@ -1,316 +1,408 @@
 import type { Readable } from "stream";
 import PDFDocument from "pdfkit";
+import { formatResumeDateRange } from "@/lib/resume-date-format";
 import { contactLines } from "@/lib/resume-contact-lines";
 import type { PdfTemplate, Resume } from "@/lib/types";
 
 const LETTER_W = 612;
 const LETTER_H = 792;
+const INCH = 72;
 
-const I = 72;
-
-/** Built-in PDF fonts (fallback when custom TTFs are not bundled). */
-const SANS = {
+const FONT = {
   normal: "Helvetica",
   bold: "Helvetica-Bold",
   italic: "Helvetica-Oblique",
 } as const;
 
-const SERIF = {
-  normal: "Times-Roman",
-  bold: "Times-Bold",
-  italic: "Times-Italic",
+const STYLE = {
+  ink: "#17202a",
+  body: "#263442",
+  muted: "#657386",
+  accent: "#225e66",
+  accentDark: "#153e46",
+  divider: "#d4dde4",
+  sidebarBg: "#f4f8f9",
+  sidebarInk: "#25323f",
+  sidebarMuted: "#667583",
 } as const;
 
-type FontSet = typeof SANS | typeof SERIF;
-
-interface Theme {
-  f: FontSet;
-  ink: string;
-  muted: string;
-  accent: string;
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-  nameSize: number;
-  nameLeading: number;
-  nameGap: number;
-  titleSize: number;
-  titleLeading: number;
-  titleGap: number;
-  sectionSize: number;
-  sectionLeading: number;
-  sectionBefore: number;
-  sectionAfter: number;
-  bodySize: number;
-  bodyLeading: number;
-  bodyGap: number;
-  bulletSize: number;
-  bulletLeading: number;
-  bulletIndent: number;
-  bulletGap: number;
-  roleSize: number;
-  roleLeading: number;
-  companySize: number;
-  companyLeading: number;
-  dateSize: number;
-  dateLeading: number;
-  dateBold: boolean;
-  dateItalic: boolean;
-  sectionTitleColor: string;
-  titleBold: boolean;
-  sectionRuleAfterHeader: boolean;
-  ruleAfterHeaderThickness: number;
-  ruleAfterContent: number;
-  topAccentRule: boolean;
-  topAccentThickness: number;
-  topAccentGap: number;
-  expFirstGap: number;
-  expRestGap: number;
-  contactMetaGap: number;
-}
+const PAGE = {
+  marginX: 0.48 * INCH,
+  top: 0.5 * INCH,
+  bottom: 0.5 * INCH,
+  sidebarW: 188,
+  gutter: 26,
+} as const;
 
 function stripBulletPrefix(line: string): string {
   return line.trim().replace(/^[•\-\*]\s*/, "");
 }
 
-function contentWidth(t: Theme): number {
-  return LETTER_W - t.left - t.right;
+function bottomY(): number {
+  return LETTER_H - PAGE.bottom;
 }
 
-function resolveTemplate(t: PdfTemplate | string): PdfTemplate {
-  if (t === "classic" || t === "minimal" || t === "structured" || t === "editorial")
-    return t;
-  return "classic";
+function mainX(): number {
+  return PAGE.marginX + PAGE.sidebarW + PAGE.gutter;
 }
 
-function buildTheme(template: PdfTemplate): Theme {
-  if (template === "classic") {
-    return {
-      f: SANS,
-      ink: "#1c1f26",
-      muted: "#5a6678",
-      accent: "#2f5f62",
-      left: 0.72 * I,
-      right: 0.72 * I,
-      top: 0.62 * I,
-      bottom: 0.62 * I,
-      nameSize: 21,
-      nameLeading: 26,
-      nameGap: 3,
-      titleSize: 11.5,
-      titleLeading: 14.5,
-      titleGap: 8,
-      sectionSize: 10.5,
-      sectionLeading: 13,
-      sectionBefore: 11,
-      sectionAfter: 5,
-      bodySize: 10.25,
-      bodyLeading: 14,
-      bodyGap: 8,
-      bulletSize: 10.25,
-      bulletLeading: 14,
-      bulletIndent: 15,
-      bulletGap: 4,
-      roleSize: 10.75,
-      roleLeading: 13,
-      companySize: 10,
-      companyLeading: 13,
-      dateSize: 9.25,
-      dateLeading: 12,
-      dateBold: false,
-      dateItalic: false,
-      sectionTitleColor: "#2f5f62",
-      titleBold: true,
-      sectionRuleAfterHeader: false,
-      ruleAfterHeaderThickness: 0,
-      ruleAfterContent: 0,
-      topAccentRule: false,
-      topAccentThickness: 0,
-      topAccentGap: 0,
-      expFirstGap: 0.12 * I,
-      expRestGap: 0.08 * I,
-      contactMetaGap: 0.09 * I,
-    };
-  }
-  if (template === "minimal") {
-    return {
-      f: SANS,
-      ink: "#22262e",
-      muted: "#6b7280",
-      accent: "#4b5563",
-      left: 0.82 * I,
-      right: 0.82 * I,
-      top: 0.72 * I,
-      bottom: 0.72 * I,
-      nameSize: 20,
-      nameLeading: 25,
-      nameGap: 4,
-      titleSize: 11,
-      titleLeading: 14,
-      titleGap: 10,
-      sectionSize: 9.5,
-      sectionLeading: 12,
-      sectionBefore: 13,
-      sectionAfter: 6,
-      bodySize: 10.25,
-      bodyLeading: 14.25,
-      bodyGap: 9,
-      bulletSize: 10.25,
-      bulletLeading: 14.25,
-      bulletIndent: 16,
-      bulletGap: 4,
-      roleSize: 10.5,
-      roleLeading: 13,
-      companySize: 10,
-      companyLeading: 13,
-      dateSize: 9.25,
-      dateLeading: 12,
-      dateBold: false,
-      dateItalic: false,
-      sectionTitleColor: "#4b5563",
-      titleBold: false,
-      sectionRuleAfterHeader: false,
-      ruleAfterHeaderThickness: 0,
-      ruleAfterContent: 0,
-      topAccentRule: false,
-      topAccentThickness: 0,
-      topAccentGap: 0,
-      expFirstGap: 0.12 * I,
-      expRestGap: 0.08 * I,
-      contactMetaGap: 0.09 * I,
-    };
-  }
-  if (template === "structured") {
-    return {
-      f: SANS,
-      ink: "#0f1419",
-      muted: "#566173",
-      accent: "#1e3a5f",
-      left: 0.68 * I,
-      right: 0.68 * I,
-      top: 0.58 * I,
-      bottom: 0.58 * I,
-      nameSize: 22,
-      nameLeading: 27,
-      nameGap: 2,
-      titleSize: 11.5,
-      titleLeading: 14.5,
-      titleGap: 8,
-      sectionSize: 10.5,
-      sectionLeading: 13,
-      sectionBefore: 12,
-      sectionAfter: 4,
-      bodySize: 10.25,
-      bodyLeading: 14,
-      bodyGap: 7,
-      bulletSize: 10.25,
-      bulletLeading: 14,
-      bulletIndent: 15,
-      bulletGap: 4,
-      roleSize: 10.75,
-      roleLeading: 13,
-      companySize: 10,
-      companyLeading: 13,
-      dateSize: 9.5,
-      dateLeading: 12,
-      dateBold: true,
-      dateItalic: false,
-      sectionTitleColor: "#0f1419",
-      titleBold: true,
-      sectionRuleAfterHeader: true,
-      ruleAfterHeaderThickness: 0.55,
-      ruleAfterContent: 0.07 * I,
-      topAccentRule: true,
-      topAccentThickness: 0.75,
-      topAccentGap: 0.11 * I,
-      expFirstGap: 0.12 * I,
-      expRestGap: 0.08 * I,
-      contactMetaGap: 0.09 * I,
-    };
-  }
-  return {
-    f: SERIF,
-    ink: "#1c1917",
-    muted: "#78716c",
-    accent: "#57534e",
-    left: 0.78 * I,
-    right: 0.78 * I,
-    top: 0.68 * I,
-    bottom: 0.68 * I,
-    nameSize: 22,
-    nameLeading: 27,
-    nameGap: 4,
-    titleSize: 11.5,
-    titleLeading: 14.5,
-    titleGap: 8,
-    sectionSize: 11,
-    sectionLeading: 13.5,
-    sectionBefore: 11,
-    sectionAfter: 6,
-    bodySize: 10.5,
-    bodyLeading: 14.25,
-    bodyGap: 8,
-    bulletSize: 10.5,
-    bulletLeading: 14.25,
-    bulletIndent: 18,
-    bulletGap: 4,
-    roleSize: 11,
-    roleLeading: 13.5,
-    companySize: 10.25,
-    companyLeading: 13.5,
-    dateSize: 10,
-    dateLeading: 13,
-    dateBold: false,
-    dateItalic: true,
-    sectionTitleColor: "#57534e",
-    titleBold: true,
-    sectionRuleAfterHeader: false,
-    ruleAfterHeaderThickness: 0,
-    ruleAfterContent: 0,
-    topAccentRule: false,
-    topAccentThickness: 0,
-    topAccentGap: 0,
-    expFirstGap: 0.12 * I,
-    expRestGap: 0.08 * I,
-    contactMetaGap: 0.09 * I,
-  };
+function mainWidth(): number {
+  return LETTER_W - mainX() - PAGE.marginX;
 }
 
-function bodyInk(theme: Theme): string {
-  return theme.f === SERIF ? "#292524" : theme.ink;
+function drawPageFrame(doc: PDFKit.PDFDocument): void {
+  doc
+    .save()
+    .rect(0, 0, PAGE.marginX + PAGE.sidebarW + 14, LETTER_H)
+    .fill(STYLE.sidebarBg)
+    .restore();
+
+  doc
+    .save()
+    .strokeColor(STYLE.divider)
+    .lineWidth(0.8)
+    .moveTo(PAGE.marginX + PAGE.sidebarW + 14, PAGE.top)
+    .lineTo(PAGE.marginX + PAGE.sidebarW + 14, bottomY())
+    .stroke()
+    .restore();
 }
 
-function newPageY(doc: PDFKit.PDFDocument, theme: Theme): number {
-  doc.addPage({ size: "LETTER", margin: 0 });
-  return theme.top;
-}
-
-/** If block at `y` needs `delta` points, move to new page when it would cross bottom margin. */
-function guardY(
+function textHeight(
   doc: PDFKit.PDFDocument,
-  y: number,
-  delta: number,
-  theme: Theme,
+  text: string,
+  font: string,
+  size: number,
+  width: number,
+  options: PDFKit.Mixins.TextOptions = {},
 ): number {
-  if (y + delta > LETTER_H - theme.bottom) return newPageY(doc, theme);
-  return y;
+  doc.font(font).fontSize(size);
+  return doc.heightOfString(text, { width, ...options });
 }
 
-function drawHr(
+function writeText(
   doc: PDFKit.PDFDocument,
+  text: string,
   x: number,
   y: number,
   width: number,
-  thickness: number,
-  color: string,
+  options: {
+    font?: string;
+    size?: number;
+    color?: string;
+    after?: number;
+    align?: PDFKit.Mixins.TextOptions["align"];
+    continued?: boolean;
+  } = {},
 ): number {
+  const font = options.font ?? FONT.normal;
+  const size = options.size ?? 9.5;
+  const color = options.color ?? STYLE.body;
+  const after = options.after ?? 0;
+
+  doc.font(font).fontSize(size).fillColor(color);
+  const height = doc.heightOfString(text, {
+    width,
+    align: options.align,
+    continued: options.continued,
+  });
+  doc.text(text, x, y, {
+    width,
+    align: options.align,
+    continued: options.continued,
+    lineGap: 1.2,
+  });
+  return y + height + after;
+}
+
+function newMainPage(doc: PDFKit.PDFDocument): number {
+  doc.addPage({ size: "LETTER", margin: 0 });
+  drawPageFrame(doc);
+  return PAGE.top;
+}
+
+function guardMainY(
+  doc: PDFKit.PDFDocument,
+  y: number,
+  neededHeight: number,
+): number {
+  if (y + neededHeight > bottomY()) return newMainPage(doc);
+  return y;
+}
+
+function drawSectionTitle(
+  doc: PDFKit.PDFDocument,
+  title: string,
+  x: number,
+  y: number,
+  width: number,
+  variant: "sidebar" | "main",
+): number {
+  const isSidebar = variant === "sidebar";
+  const size = isSidebar ? 8.5 : 10;
+  const color = isSidebar ? STYLE.accentDark : STYLE.accent;
+  const ruleY = y + size + 7;
+
   doc
-    .strokeColor(color)
-    .lineWidth(thickness)
-    .moveTo(x, y)
-    .lineTo(x + width, y)
+    .font(FONT.bold)
+    .fontSize(size)
+    .fillColor(color)
+    .text(title.toUpperCase(), x, y, {
+      width,
+      characterSpacing: 0.7,
+    });
+
+  doc
+    .strokeColor(isSidebar ? "#cbd8dd" : STYLE.accent)
+    .lineWidth(isSidebar ? 0.5 : 0.8)
+    .moveTo(x, ruleY)
+    .lineTo(x + width, ruleY)
     .stroke();
+
+  return ruleY + (isSidebar ? 10 : 12);
+}
+
+function writeSidebarBlock(
+  doc: PDFKit.PDFDocument,
+  title: string,
+  y: number,
+  writer: (y: number) => number,
+): number {
+  const x = PAGE.marginX;
+  const width = PAGE.sidebarW;
+  y = drawSectionTitle(doc, title, x, y, width, "sidebar");
+  return writer(y) + 13;
+}
+
+function writeMainSectionTitle(
+  doc: PDFKit.PDFDocument,
+  title: string,
+  y: number,
+): number {
+  y = guardMainY(doc, y, 30);
+  return drawSectionTitle(doc, title, mainX(), y, mainWidth(), "main");
+}
+
+function writeBullet(
+  doc: PDFKit.PDFDocument,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  options: {
+    size?: number;
+    color?: string;
+    after?: number;
+    guard?: boolean;
+  } = {},
+): number {
+  const clean = stripBulletPrefix(text);
+  if (!clean) return y;
+
+  const size = options.size ?? 9.15;
+  const color = options.color ?? STYLE.body;
+  const after = options.after ?? 4;
+  const bulletW = 11;
+  const bodyW = width - bulletW;
+  const height = textHeight(doc, clean, FONT.normal, size, bodyW, {
+    lineGap: 1.2,
+  });
+  const yy = options.guard === false ? y : guardMainY(doc, y, height + after);
+
+  doc.font(FONT.bold).fontSize(size).fillColor(STYLE.accent).text("•", x, yy, {
+    width: bulletW,
+  });
+  doc.font(FONT.normal).fontSize(size).fillColor(color).text(clean, x + bulletW, yy, {
+    width: bodyW,
+    lineGap: 1.2,
+  });
+
+  return yy + height + after;
+}
+
+function writeSidebar(doc: PDFKit.PDFDocument, resume: Resume): void {
+  const x = PAGE.marginX;
+  const width = PAGE.sidebarW;
+  let y = PAGE.top + 2;
+
+  y = writeText(doc, resume.contact.name, x, y, width, {
+    font: FONT.bold,
+    size: 22,
+    color: STYLE.ink,
+    after: 4,
+  });
+
+  if (resume.target_title?.trim()) {
+    y = writeText(doc, resume.target_title.trim(), x, y, width, {
+      font: FONT.bold,
+      size: 10.5,
+      color: STYLE.accent,
+      after: 14,
+    });
+  } else {
+    y += 8;
+  }
+
+  const lines = contactLines(resume);
+  if (lines.length) {
+    y = writeSidebarBlock(doc, "Contact", y, (blockY) => {
+      let nextY = blockY;
+      for (const line of lines) {
+        nextY = writeText(doc, line, x, nextY, width, {
+          size: 8.6,
+          color: STYLE.sidebarMuted,
+          after: 5,
+        });
+      }
+      return nextY;
+    });
+  }
+
+  if (resume.summary.trim()) {
+    y = writeSidebarBlock(doc, "Summary", y, (blockY) =>
+      writeText(doc, resume.summary.trim(), x, blockY, width, {
+        size: 8.7,
+        color: STYLE.sidebarInk,
+        after: 0,
+      }),
+    );
+  }
+
+  if (resume.skills.length) {
+    y += resume.summary.trim() ? 5 : 0;
+    y = writeSidebarBlock(doc, "Skills", y, (blockY) => {
+      let nextY = blockY;
+      for (const skill of resume.skills) {
+        nextY = writeBullet(doc, skill, x, nextY, width, {
+          size: 8.45,
+          color: STYLE.sidebarInk,
+          after: 2.5,
+          guard: false,
+        });
+      }
+      return nextY;
+    });
+  }
+
+  if (resume.education.length) {
+    writeSidebarBlock(doc, "Education", y, (blockY) => {
+      let nextY = blockY;
+      for (const edu of resume.education) {
+        nextY = writeText(doc, edu.degree, x, nextY, width, {
+          font: FONT.bold,
+          size: 8.8,
+          color: STYLE.sidebarInk,
+          after: 2,
+        });
+        nextY = writeText(doc, edu.institution, x, nextY, width, {
+          size: 8.4,
+          color: STYLE.sidebarMuted,
+          after: 2,
+        });
+        const meta = [edu.dates, edu.details].filter(Boolean).join(" | ");
+        if (meta) {
+          nextY = writeText(doc, meta, x, nextY, width, {
+            size: 8.2,
+            color: STYLE.sidebarMuted,
+            after: 8,
+          });
+        } else {
+          nextY += 6;
+        }
+      }
+      return nextY;
+    });
+  }
+}
+
+function writeExperience(doc: PDFKit.PDFDocument, resume: Resume, startY: number): number {
+  let y = writeMainSectionTitle(doc, "Experience", startY);
+
+  for (const exp of resume.experience) {
+    const companyLine = exp.company + (exp.location ? ` | ${exp.location}` : "");
+    const dateText = formatResumeDateRange(exp.dates ?? "");
+    const roleW = mainWidth() * 0.62;
+    const dateGap = 14;
+    const dateW = mainWidth() - roleW - dateGap;
+    const titleH = textHeight(doc, exp.title, FONT.bold, 11.25, roleW);
+    const companyH = textHeight(doc, companyLine, FONT.normal, 9.3, roleW);
+    const dateH = dateText
+      ? textHeight(doc, dateText, FONT.italic, 8.8, dateW, { align: "right" })
+      : 0;
+    const headerH = Math.max(titleH + companyH + 4, dateH) + 4;
+
+    y = guardMainY(doc, y + 3, headerH + 18);
+
+    doc.font(FONT.bold).fontSize(11.25).fillColor(STYLE.ink).text(exp.title, mainX(), y, {
+      width: roleW,
+      lineGap: 0.5,
+    });
+
+    if (dateText) {
+      doc
+        .font(FONT.italic)
+        .fontSize(8.8)
+        .fillColor(STYLE.muted)
+        .text(dateText, mainX() + roleW + dateGap, y + 1, {
+          width: dateW,
+          align: "right",
+        });
+    }
+
+    doc
+      .font(FONT.normal)
+      .fontSize(9.3)
+      .fillColor(STYLE.accent)
+      .text(companyLine, mainX(), y + titleH + 1, {
+        width: roleW,
+      });
+
+    y += headerH;
+
+    for (const line of exp.bullets) {
+      y = writeBullet(doc, line, mainX(), y, mainWidth(), {
+        size: 9.15,
+        after: 3.4,
+      });
+    }
+
+    y += 6;
+  }
+
+  return y;
+}
+
+function writeProjects(doc: PDFKit.PDFDocument, resume: Resume, startY: number): number {
+  if (!resume.projects.length) return startY;
+
+  let y = writeMainSectionTitle(doc, "Projects", startY + 5);
+
+  for (const project of resume.projects) {
+    y = guardMainY(doc, y + 2, 34);
+    y = writeText(doc, project.name, mainX(), y, mainWidth(), {
+      font: FONT.bold,
+      size: 10.5,
+      color: STYLE.ink,
+      after: 2,
+    });
+
+    if (project.description?.trim()) {
+      y = writeText(doc, project.description.trim(), mainX(), y, mainWidth(), {
+        size: 9.15,
+        color: STYLE.body,
+        after: 3,
+      });
+    }
+
+    for (const line of project.bullets) {
+      y = writeBullet(doc, line, mainX(), y, mainWidth(), {
+        size: 9.05,
+        after: 3,
+      });
+    }
+
+    y += 5;
+  }
+
   return y;
 }
 
@@ -318,8 +410,7 @@ export function resumeToPdfBytes(
   resume: Resume,
   template: PdfTemplate | string = "classic",
 ): Promise<Buffer> {
-  const tpl = resolveTemplate(template);
-  const theme = buildTheme(tpl);
+  void template;
 
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -329,285 +420,12 @@ export function resumeToPdfBytes(
     readable.on("error", reject);
     readable.on("end", () => resolve(Buffer.concat(chunks)));
 
-    const cw = contentWidth(theme);
-    const x0 = theme.left;
-    let y = theme.top;
+    drawPageFrame(doc);
+    writeSidebar(doc, resume);
 
-    const write = (
-      text: string,
-      font: string,
-      size: number,
-      color: string,
-      x: number,
-      yi: number,
-      width: number,
-      lineGap: number,
-      align?: PDFKit.Mixins.TextOptions["align"],
-    ): number => {
-      doc.font(font).fontSize(size).fillColor(color);
-      const h = doc.heightOfString(text, { width, align });
-      const yy = guardY(doc, yi, h + lineGap, theme);
-      doc.font(font).fontSize(size).fillColor(color);
-      doc.text(text, x, yy, { width, align, lineGap: 0 });
-      return yy + h + lineGap;
-    };
-
-    y = write(
-      resume.contact.name,
-      theme.f.bold,
-      theme.nameSize,
-      theme.ink,
-      x0,
-      y,
-      cw,
-      theme.nameGap,
-    );
-
-    if (resume.target_title) {
-      y = write(
-        resume.target_title,
-        theme.titleBold ? theme.f.bold : theme.f.normal,
-        theme.titleSize,
-        theme.muted,
-        x0,
-        y,
-        cw,
-        theme.titleGap,
-      );
-    }
-
-    for (const bit of contactLines(resume)) {
-      y = write(
-        bit,
-        theme.f.normal,
-        theme.bodySize,
-        bodyInk(theme),
-        x0,
-        y,
-        cw,
-        theme.contactMetaGap,
-      );
-    }
-
-    if (theme.topAccentRule) {
-      y = guardY(doc, y, theme.topAccentGap + 2, theme);
-      drawHr(doc, x0, y, cw, theme.topAccentThickness, theme.accent);
-      y += theme.topAccentGap + 2;
-    }
-
-    const section = (title: string): void => {
-      y = guardY(doc, y, theme.sectionLeading + theme.sectionBefore + 8, theme);
-      doc
-        .font(theme.f.bold)
-        .fontSize(theme.sectionSize)
-        .fillColor(theme.sectionTitleColor)
-        .text(title, x0, y + theme.sectionBefore, { width: cw });
-      y += theme.sectionBefore + theme.sectionLeading;
-
-      if (theme.sectionRuleAfterHeader) {
-        y = drawHr(doc, x0, y, cw, theme.ruleAfterHeaderThickness, theme.accent);
-        y += theme.ruleAfterContent;
-      }
-      y += theme.sectionAfter;
-    };
-
-    section("Summary");
-    y = write(
-      resume.summary,
-      theme.f.normal,
-      theme.bodySize,
-      bodyInk(theme),
-      x0,
-      y,
-      cw,
-      theme.bodyGap,
-    );
-
-    section("Skills");
-    {
-      const mid = Math.ceil(resume.skills.length / 2);
-      const left = resume.skills.slice(0, mid).join(", ");
-      const right = resume.skills.slice(mid).join(", ");
-      const half = cw * 0.5;
-      doc.font(theme.f.normal).fontSize(theme.bodySize).fillColor(bodyInk(theme));
-      const h1 = doc.heightOfString(left, { width: half - 10 });
-      const h2 = right
-        ? doc.heightOfString(right, { width: half })
-        : 0;
-      const blockH = Math.max(h1, h2) + 2;
-      y = guardY(doc, y, blockH, theme);
-      doc.font(theme.f.normal).fontSize(theme.bodySize).fillColor(bodyInk(theme));
-      doc.text(left, x0, y, { width: half - 10 });
-      if (right) doc.text(right, x0 + half, y, { width: half });
-      y += blockH;
-    }
-
-    section("Experience");
-    resume.experience.forEach((exp, i) => {
-      const spaceBefore = i === 0 ? theme.expFirstGap : theme.expRestGap;
-      y += spaceBefore;
-
-      const leftW = cw * 0.72;
-      const rightW = cw * 0.28;
-      const dateStr = exp.dates ?? "";
-
-      const titleBlock = exp.title;
-      const companyLine =
-        exp.company + (exp.location ? ` · ${exp.location}` : "");
-
-      doc.font(theme.f.bold).fontSize(theme.roleSize).fillColor(theme.ink);
-      const hTitle = doc.heightOfString(titleBlock, { width: leftW });
-      doc.font(theme.f.normal).fontSize(theme.companySize).fillColor(theme.muted);
-      const hCo = doc.heightOfString(companyLine, { width: leftW });
-      const dateFont = theme.dateItalic
-        ? theme.f.italic
-        : theme.dateBold
-          ? theme.f.bold
-          : theme.f.normal;
-      doc.font(dateFont).fontSize(theme.dateSize).fillColor(theme.dateBold ? theme.accent : theme.muted);
-      const hDate = dateStr
-        ? doc.heightOfString(dateStr, { width: rightW, align: "right" })
-        : 0;
-      const rowH = Math.max(hTitle + hCo, hDate) + 3;
-      y = guardY(doc, y, rowH, theme);
-
-      doc.font(theme.f.bold).fontSize(theme.roleSize).fillColor(theme.ink);
-      doc.text(titleBlock, x0, y, { width: leftW });
-      if (dateStr) {
-        doc
-          .font(dateFont)
-          .fontSize(theme.dateSize)
-          .fillColor(theme.dateBold ? theme.accent : theme.muted)
-          .text(dateStr, x0 + leftW, y, {
-            width: rightW,
-            align: "right",
-          });
-      }
-      doc
-        .font(theme.f.normal)
-        .fontSize(theme.companySize)
-        .fillColor(theme.muted)
-        .text(companyLine, x0, y + hTitle, { width: leftW });
-      y += rowH;
-
-      for (const line of exp.bullets) {
-        const t = stripBulletPrefix(line);
-        if (!t) continue;
-        const bulletText = `• ${t}`;
-        const w = cw - theme.bulletIndent;
-        doc.font(theme.f.normal).fontSize(theme.bulletSize).fillColor(bodyInk(theme));
-        const bh = doc.heightOfString(bulletText, { width: w });
-        y = guardY(doc, y, bh + theme.bulletGap, theme);
-        doc
-          .font(theme.f.normal)
-          .fontSize(theme.bulletSize)
-          .fillColor(bodyInk(theme))
-          .text(bulletText, x0 + theme.bulletIndent, y, { width: w });
-        y += bh + theme.bulletGap;
-      }
-    });
-
-    if (resume.education.length > 0) {
-      section("Education");
-      resume.education.forEach((edu, j) => {
-        const spaceBefore = j === 0 ? theme.expFirstGap : theme.expRestGap;
-        y += spaceBefore;
-        const leftW = cw * 0.72;
-        const rightW = cw * 0.28;
-        const dateStr = edu.dates ?? "";
-        const titleBlock = edu.degree;
-        const inst = edu.institution;
-
-        doc.font(theme.f.bold).fontSize(theme.roleSize).fillColor(theme.ink);
-        const hTitle = doc.heightOfString(titleBlock, { width: leftW });
-        doc.font(theme.f.normal).fontSize(theme.companySize).fillColor(theme.muted);
-        const hCo = doc.heightOfString(inst, { width: leftW });
-        const eduDateFont = theme.dateItalic
-          ? theme.f.italic
-          : theme.dateBold
-            ? theme.f.bold
-            : theme.f.normal;
-        const eduDateColor = theme.dateBold ? theme.accent : theme.muted;
-        doc.font(eduDateFont).fontSize(theme.dateSize).fillColor(eduDateColor);
-        const hDate = dateStr
-          ? doc.heightOfString(dateStr, { width: rightW, align: "right" })
-          : 0;
-        const rowH = Math.max(hTitle + hCo, hDate) + 3;
-        y = guardY(doc, y, rowH, theme);
-
-        doc.font(theme.f.bold).fontSize(theme.roleSize).fillColor(theme.ink);
-        doc.text(titleBlock, x0, y, { width: leftW });
-        if (dateStr) {
-          doc
-            .font(eduDateFont)
-            .fontSize(theme.dateSize)
-            .fillColor(eduDateColor)
-            .text(dateStr, x0 + leftW, y, { width: rightW, align: "right" });
-        }
-        doc
-          .font(theme.f.normal)
-          .fontSize(theme.companySize)
-          .fillColor(theme.muted)
-          .text(inst, x0, y + hTitle, { width: leftW });
-        y += rowH;
-
-        if (edu.details) {
-          y = write(
-            edu.details,
-            theme.f.normal,
-            theme.bodySize,
-            bodyInk(theme),
-            x0,
-            y,
-            cw,
-            theme.bodyGap,
-          );
-        }
-      });
-    }
-
-    if (resume.projects.length > 0) {
-      section("Projects");
-      for (const proj of resume.projects) {
-        y = write(
-          proj.name,
-          theme.f.bold,
-          theme.roleSize,
-          theme.ink,
-          x0,
-          y,
-          cw,
-          2,
-        );
-        if (proj.description) {
-          y = write(
-            proj.description,
-            theme.f.normal,
-            theme.bodySize,
-            bodyInk(theme),
-            x0,
-            y,
-            cw,
-            theme.bodyGap,
-          );
-        }
-        for (const line of proj.bullets) {
-          const t = stripBulletPrefix(line);
-          if (!t) continue;
-          const bulletText = `• ${t}`;
-          const w = cw - theme.bulletIndent;
-          doc.font(theme.f.normal).fontSize(theme.bulletSize).fillColor(bodyInk(theme));
-          const bh = doc.heightOfString(bulletText, { width: w });
-          y = guardY(doc, y, bh + theme.bulletGap, theme);
-          doc
-            .font(theme.f.normal)
-            .fontSize(theme.bulletSize)
-            .fillColor(bodyInk(theme))
-            .text(bulletText, x0 + theme.bulletIndent, y, { width: w });
-          y += bh + theme.bulletGap;
-        }
-      }
-    }
+    let y = PAGE.top + 3;
+    y = writeExperience(doc, resume, y);
+    writeProjects(doc, resume, y);
 
     doc.end();
   });

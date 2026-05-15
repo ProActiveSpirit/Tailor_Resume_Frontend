@@ -83,6 +83,6 @@ export function parseTailoredGenerationFromLlm(
   return {
     company_name: wrapper.company_name,
     job_title: wrapper.job_title,
-    resume: applyRequestOverrides(wrapper.resume, body),
+    resume: applyRequestOverrides(wrapper.resume, body, wrapper.job_title),
   };
 }

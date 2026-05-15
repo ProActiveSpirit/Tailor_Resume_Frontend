@@ -6,9 +6,13 @@ import {
   STATIC_TAILOR_INSTRUCTIONS,
 } from "./resume-prompt";
 import { parseTailoredGenerationFromLlm } from "./tailored-output-parse";
-import { type GenerateResumeRequestParsed } from "./schemas";
+import {
+  tailoredGenerationOpenAiFunctionSchema,
+  type GenerateResumeRequestParsed,
+} from "./schemas";
 
 const GPT41_RATE_MTUSD = { in: 2.0, out: 8.0 } as const;
+const SUBMIT_TAILORED_RESUME_FUNCTION = "submit_tailored_resume";
 
 function estimateOpenAiCostUsd(
   modelId: string,
@@ -57,7 +61,22 @@ export async function generateResumeOpenAI(
       { role: "system", content: systemText },
       { role: "user", content: buildUserPayload(body) },
     ],
-    response_format: { type: "json_object" },
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: SUBMIT_TAILORED_RESUME_FUNCTION,
+          description:
+            "Submit the final tailored resume payload using the required schema.",
+          parameters: tailoredGenerationOpenAiFunctionSchema(),
+          strict: true,
+        },
+      },
+    ],
+    tool_choice: {
+      type: "function",
+      function: { name: SUBMIT_TAILORED_RESUME_FUNCTION },
+    },
   });
 
   const choice = completion.choices[0];
@@ -65,10 +84,15 @@ export async function generateResumeOpenAI(
   if (refusal) {
     throw new Error(`OpenAI refused to generate: ${refusal}`);
   }
-  const raw = choice?.message?.content;
+  const toolCall = choice?.message?.tool_calls?.find(
+    (call) =>
+      call.type === "function" &&
+      call.function.name === SUBMIT_TAILORED_RESUME_FUNCTION,
+  );
+  const raw = toolCall?.type === "function" ? toolCall.function.arguments : undefined;
   if (raw == null || raw === "") {
     const reason = choice?.finish_reason ?? "unknown";
-    throw new Error(`No text in OpenAI response (finish_reason=${reason})`);
+    throw new Error(`No function arguments in OpenAI response (finish_reason=${reason})`);
   }
 
   const usage = completion.usage;

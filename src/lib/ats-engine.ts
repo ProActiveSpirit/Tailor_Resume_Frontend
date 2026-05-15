@@ -128,6 +128,9 @@ const STOP_WORDS = new Set(
     "can",
     "may",
     "must",
+    "need",
+    "needs",
+    "needed",
     "should",
     "would",
     "could",
@@ -494,6 +497,63 @@ const ALIAS_GROUPS: string[][] = [
   ["software as a service", "saas"],
 ];
 
+const REQUIREMENT_ACTION_STARTS = new Set(
+  [
+    "architect",
+    "automate",
+    "build",
+    "collaborate",
+    "convert",
+    "create",
+    "define",
+    "deliver",
+    "design",
+    "develop",
+    "drive",
+    "engineer",
+    "identify",
+    "implement",
+    "improve",
+    "lead",
+    "manage",
+    "orchestrate",
+    "own",
+    "participate",
+    "partner",
+    "ship",
+    "support",
+    "translate",
+  ].map((w) => w.toLowerCase()),
+);
+
+const NOISY_TRAILING_TOKENS = new Set(
+  [
+    "acute",
+    "advanced",
+    "clear",
+    "complex",
+    "current",
+    "deep",
+    "different",
+    "excellent",
+    "fast",
+    "high",
+    "large",
+    "many",
+    "multiple",
+    "new",
+    "other",
+    "proven",
+    "rapid",
+    "relevant",
+    "several",
+    "similar",
+    "specific",
+    "strong",
+    "various",
+  ].map((w) => w.toLowerCase()),
+);
+
 function clampScore(n: number, max: number): number {
   return Math.max(0, Math.min(max, Math.round(n)));
 }
@@ -572,6 +632,15 @@ function addTerm(
   }
 }
 
+function shouldKeepPhrase(tokens: string[]): boolean {
+  if (tokens.length <= 2) return true;
+  const [first, second, third] = tokens;
+  if (!first || !second || !third) return false;
+  if (NOISY_TRAILING_TOKENS.has(third)) return false;
+  if (new RegExp(TECH_HINTS.source, "i").test(tokens.join(" "))) return true;
+  return REQUIREMENT_ACTION_STARTS.has(first);
+}
+
 function extractPhraseCandidates(line: string): string[] {
   const norm = normalizeForMatch(line);
   const tokens = norm
@@ -583,8 +652,9 @@ function extractPhraseCandidates(line: string): string[] {
     if (one.length >= 3) out.push(one);
     if (i < tokens.length - 1) out.push(`${tokens[i]} ${tokens[i + 1]}`);
     if (i < tokens.length - 2) {
-      const tri = `${tokens[i]} ${tokens[i + 1]} ${tokens[i + 2]}`;
-      if (tri.length <= 52) out.push(tri);
+      const triTokens = [tokens[i], tokens[i + 1], tokens[i + 2]];
+      const tri = triTokens.join(" ");
+      if (tri.length <= 52 && shouldKeepPhrase(triTokens)) out.push(tri);
     }
   }
   return out;

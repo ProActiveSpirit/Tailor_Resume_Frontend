@@ -709,7 +709,7 @@ export function TailorHomeClient({
   const fieldFill =
     "bg-[color:color-mix(in_srgb,var(--card)_58%,var(--paper))]";
   const textareaJob =
-    `h-[6rem] w-full shrink-0 resize-none overflow-y-auto rounded-xl border border-[var(--border-muted)] ${fieldFill} px-3 py-2 text-sm text-stone-800 shadow-inner outline-none ring-accent/20 transition placeholder:text-stone-500 focus:border-accent focus:ring-2 focus:ring-accent/25`;
+    `h-[25rem] w-full shrink-0 resize-none overflow-y-auto rounded-xl border border-[var(--border-muted)] ${fieldFill} px-3 py-2 text-sm text-stone-800 shadow-inner outline-none ring-accent/20 transition placeholder:text-stone-500 focus:border-accent focus:ring-2 focus:ring-accent/25`;
   const textareaWorkshopShell =
     `w-full min-h-0 shrink-0 resize-none overflow-y-auto rounded-xl border border-[var(--border-muted)] ${fieldFill} px-3 py-2 text-sm text-stone-800 shadow-inner outline-none ring-accent/20 transition placeholder:text-stone-500 focus:border-accent focus:ring-2 focus:ring-accent/25`;
   const textareaWorkshopExperience = `${textareaWorkshopShell} h-[10rem] w-full leading-relaxed`;
@@ -1003,11 +1003,18 @@ export function TailorHomeClient({
                   !mobileJobOpen ? "hidden lg:block" : "block"
                 }
               >
-                <div className="flex flex-col gap-3">
-                  <div className="shrink-0">
-                    <label htmlFor="jd" className={uiFieldLabel}>
+                <div className="flex flex-col gap-2">
+                  <div className="flex shrink-0 items-center justify-between gap-3">
+                    <label htmlFor="jd" className={`${uiFieldLabel} !mb-0`}>
                       Job description (required)
                     </label>
+                    <button
+                      type="submit"
+                      disabled={!canSubmit || loading}
+                      className={workshopBtnPrimary}
+                    >
+                      {loading ? "Generating…" : "Generate"}
+                    </button>
                   </div>
                   <textarea
                     id="jd"
@@ -1018,15 +1025,6 @@ export function TailorHomeClient({
                     className={textareaJob}
                     placeholder="Paste the full job posting text (minimum 20 characters)."
                   />
-                  <div className="flex shrink-0 justify-end">
-                    <button
-                      type="submit"
-                      disabled={!canSubmit || loading}
-                      className={workshopBtnPrimary}
-                    >
-                      {loading ? "Generating…" : "Generate"}
-                    </button>
-                  </div>
                 </div>
               </div>
 

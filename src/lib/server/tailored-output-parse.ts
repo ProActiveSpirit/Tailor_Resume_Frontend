@@ -1,4 +1,5 @@
 import type { Resume } from "@/lib/types";
+import { enforceGeneratedExperienceRules } from "./experience-rules";
 import { applyRequestOverrides } from "./resume-prompt";
 import { normalizeLlmResumeJson } from "./resume-llm-normalize";
 import {
@@ -80,9 +81,13 @@ export function parseTailoredGenerationFromLlm(
     resume: resumeOnly,
   });
 
+  const resume = enforceGeneratedExperienceRules(
+    applyRequestOverrides(wrapper.resume, body, wrapper.job_title),
+  );
+
   return {
     company_name: wrapper.company_name,
     job_title: wrapper.job_title,
-    resume: applyRequestOverrides(wrapper.resume, body, wrapper.job_title),
+    resume,
   };
 }

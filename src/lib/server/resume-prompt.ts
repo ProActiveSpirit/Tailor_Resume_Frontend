@@ -4,6 +4,15 @@ import type {
   ResumeParsed,
 } from "./schemas";
 
+export const TOTAL_WORK_EXPERIENCE_RULES = `When stating total work experience (X+ years) in the summary, compute X from candidate source material using chronological employment and education:
+- Graduation anchor: From education, use the latest completed degree end (graduation year or "MMM YYYY" on the degree). If multiple degrees, use the one that marks entry into the target profession.
+- Timeline: List every role with start and end from source text; treat "Present" as today; write experience entries reverse-chronologically.
+- Exclude pre-graduation time: Do not count months before graduation toward professional tenure unless the source explicitly labels pre-grad roles as internships or co-ops (count only those labeled periods).
+- Merge overlaps: For concurrent full-time roles, merge overlapping intervals so years are not double-counted.
+- Compute X: Total professional years = merged months from first post-grad role start through the latest role end (or today), divided by 12, rounded down; use "X+ years" only when supported. If dates are partial or ambiguous, use the lower defensible X.
+- Sanity cap: X must not exceed calendar years since graduation when graduation is known.
+- Consistency: The first summary sentence must use this X; experience dates must not imply a longer career than X.`;
+
 export const STATIC_TAILOR_INSTRUCTIONS = `You are a senior resume strategist and career architect who builds high-converting, ATS-optimized resumes.
 Your task: produce JSON only (schema enforced by the API) with three top-level keys: \`company_name\`, \`job_title\`, and \`resume\`.
 
@@ -63,7 +72,8 @@ ATS OPTIMIZATION — MAXIMIZE ENTERPRISE PARSER SCORE
 ═══════════════════════════════════════════════════════
 - \`target_title\`: set to the exact job title from the posting (or closest industry-standard variant). Never null when the title is clear.
 - Summary: 3–4 tight sentences.
-  • Sentence 1: "[Target Title] with X+ years of experience in [must-have-1] and [must-have-2]."
+  • Sentence 1: "[Target Title] with X+ years of experience in [must-have-1] and [must-have-2]." Compute X using the total work experience rules in the user payload (graduation year + chronological employment); do not inflate X.
+  • Generated experience dates must stay chronologically consistent with X and with any graduation year stated in candidate source material.
   • Sentence 2: Describe the most impactful AI/technical domain you cover, using JD language.
   • Sentence 3: Quantified career highlight (scale, impact, or recognition).
   • Sentence 4 (optional): Collaboration style or leadership scope.
@@ -84,7 +94,7 @@ Required top-level keys: "company_name" (string or null — hiring employer from
 The "resume" object must have:
 - target_title: exact job title from the posting (string or null)
 - contact: { name, email, phone, location, linkedin, website }
-- summary: 3–4 sentences; sentence 1 = "[Title] with X+ years in [must-have-1] and [must-have-2]"
+- summary: 3–4 sentences; sentence 1 = "[Title] with X+ years in [must-have-1] and [must-have-2]" where X is computed per total work experience rules (graduation + merged employment timeline; round down; conservative if ambiguous)
 - skills: array of 7–8 sector-grouped strings (pattern "Sector: Skill1, Skill2, Skill3"); 25+ individual skills total across all sectors; AI & ML sector is required
 - experience[]: 3–5 generated entries (not from source history) ordered reverse-chronologically; most recent entry MUST include AI/ML work; each entry has "dates" (string), 4–6 bullets (each starts with action verb, ≥60% have numeric metrics)
 - education[]: each entry has "dates" and "details" (string or null)
@@ -99,6 +109,8 @@ export function buildUserPayload(body: GenerateResumeRequestParsed): string {
     body.job_description.trim(),
     "\n\n## Candidate source material (facts must come from here)\n",
     body.source_resume.trim(),
+    "\n\n## Total work experience (required for summary)\n",
+    TOTAL_WORK_EXPERIENCE_RULES,
     "\n\n## Display overrides (use these exact values in output.contact)\n",
     `- Name for contact.name: ${body.display_name}\n`,
     `- Email for contact.email: ${body.email}\n`,

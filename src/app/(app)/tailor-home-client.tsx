@@ -40,6 +40,7 @@ import {
 import { formatResumeDateRange } from "@/lib/resume-date-format";
 import type { GenerateResumeResponse, GenerationMeta, Resume } from "@/lib/types";
 import { contactRowText } from "@/lib/resume-contact-lines";
+import { TOTAL_WORK_EXPERIENCE_RULES } from "@/lib/server/resume-prompt";
 import {
   type TailorInitialProfile,
   TAILOR_PROFILE_DB_COLUMNS,
@@ -73,7 +74,9 @@ function readLastWorkshopEditor(): "system" | "experience" {
 
 const SYSTEM_PROMPT_SOFT_WARN_CHARS = 12_000;
 
-const DEFAULT_SYSTEM_PROMPT = `You are an expert ATS resume strategist. Tailor the resume to the target job using only truthful facts from the candidate source material. Preserve every distinct employer/role and employment date. Set a clear target title from the job title or closest truthful supported variant. Put the strongest supported must-have phrases in the first summary sentence, order 8-18 skills by exact job-description must-haves first, and weave supported requirements into experience evidence. For each experience entry, write exactly 3 concise bullets: one role-alignment bullet, one measurable impact bullet when evidence exists, and one tools/process/leadership bullet matched to the job description. Mirror important job-description keywords naturally in the target title, summary, skills, and bullets, but never fabricate, exaggerate, or keyword-stuff. Keep the resume recruiter-readable, ATS-safe, and focused on strongest supported evidence.`;
+const DEFAULT_SYSTEM_PROMPT = `You are an expert ATS resume strategist. Tailor the resume to the target job using only truthful facts from the candidate source material. Preserve every distinct employer/role and employment date. Set a clear target title from the job title or closest truthful supported variant. Put the strongest supported must-have phrases in the first summary sentence, including "X+ years" where X is computed from graduation year and chronological employment (see total work experience rules below). Order 8-18 skills by exact job-description must-haves first, and weave supported requirements into experience evidence. For each experience entry, write exactly 3 concise bullets: one role-alignment bullet, one measurable impact bullet when evidence exists, and one tools/process/leadership bullet matched to the job description. Mirror important job-description keywords naturally in the target title, summary, skills, and bullets, but never fabricate, exaggerate, or keyword-stuff. Keep the resume recruiter-readable, ATS-safe, and focused on strongest supported evidence.
+
+${TOTAL_WORK_EXPERIENCE_RULES}`;
 
 function buildAtsUpgradeSystemPrompt(
   basePrompt: string,
@@ -106,7 +109,7 @@ ${prioritySuggestions.length ? prioritySuggestions.join("\n") : "- Keep the resu
 
 Upgrade instructions:
 - Set target_title to the exact job title or closest truthful supported variant.
-- Rewrite the first summary sentence to include the target role and the strongest supported must-have phrases.
+- Rewrite the first summary sentence to include the target role and the strongest supported must-have phrases; recompute X+ years using the total work experience rules from candidate source material and do not increase X beyond what employment and graduation dates support.
 - Reorder skills to 8-18 concise items, placing exact supported must-have terms first.
 - Rewrite experience bullets so supported must-have requirements appear as evidence inside bullets, not only as skills.
 - Use strong action verbs and truthful metrics when present in the source; if no numbers exist, use truthful scope without inventing metrics.

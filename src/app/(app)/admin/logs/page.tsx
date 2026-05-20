@@ -56,7 +56,7 @@ export default async function AdminLogsPage() {
           </h1>
           <p className="mt-2 max-w-3xl text-sm text-stone-600">
             History of successful resume generations: who ran them, model and token usage, estimated
-            cost, and full prompts. API keys are never stored—only a non-secret source label.
+            cost, and job description plus source material. API keys are never stored—only a non-secret source label.
           </p>
           <p className="mt-4 flex flex-wrap gap-4 text-sm">
             <Link

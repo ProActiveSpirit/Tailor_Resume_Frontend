@@ -19,7 +19,6 @@ const profilePatchSchema = z
     phone: z.string().max(80).nullable().optional(),
     address: z.string().max(500).nullable().optional(),
     linkedin: z.string().max(500).nullable().optional(),
-    system_prompt: z.string().min(10).max(20_000).optional(),
     source_resume: z.string().min(20).max(100_000).optional(),
   })
   .strict()
@@ -75,9 +74,6 @@ function buildProfileUpdate(
   }
   if (body.linkedin !== undefined) {
     update.linkedin = body.linkedin?.trim() || null;
-  }
-  if (body.system_prompt !== undefined) {
-    update.system_prompt = body.system_prompt.trim();
   }
   if (body.source_resume !== undefined) {
     update.source_resume = body.source_resume.trim();

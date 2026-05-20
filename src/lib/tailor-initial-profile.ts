@@ -5,7 +5,6 @@ export type TailorInitialProfile = {
   phone: string | null;
   address: string | null;
   linkedin: string | null;
-  system_prompt: string | null;
   source_resume: string | null;
   pdf_template: string | null;
   llm_provider: string | null;
@@ -13,4 +12,4 @@ export type TailorInitialProfile = {
 };
 
 export const TAILOR_PROFILE_DB_COLUMNS =
-  "display_name, email, phone, address, linkedin, system_prompt, source_resume, pdf_template, llm_provider, llm_model" as const;
+  "display_name, email, phone, address, linkedin, source_resume, pdf_template, llm_provider, llm_model" as const;

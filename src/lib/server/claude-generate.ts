@@ -8,6 +8,7 @@ import type {
 import type { GenerationMeta, Resume } from "@/lib/types";
 import {
   buildUserPayload,
+  resolveTailorUserPrompt,
   STATIC_TAILOR_INSTRUCTIONS,
 } from "./resume-prompt";
 import { parseTailoredGenerationFromLlm } from "./tailored-output-parse";
@@ -150,7 +151,7 @@ export async function generateResumeAnthropic(
     },
     {
       type: "text",
-      text: body.system_prompt.trim(),
+      text: resolveTailorUserPrompt(body.ats_upgrade),
     },
   ];
 

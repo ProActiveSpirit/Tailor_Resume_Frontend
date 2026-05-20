@@ -3,6 +3,7 @@ import type { GenerateCoverLetterResponse, GenerateResumeResponse } from "@/lib/
 import {
   buildUserPayload,
   JSON_OBJECT_ONLY_FOOTER,
+  resolveTailorUserPrompt,
   STATIC_TAILOR_INSTRUCTIONS,
 } from "@/lib/server/resume-prompt";
 import {
@@ -92,7 +93,7 @@ export function resolvePuterRoute(body: GenerateResumeRequestParsed): {
 
 function payloadToParsed(payload: GeneratePayload): GenerateResumeRequestParsed {
   return {
-    system_prompt: payload.system_prompt,
+    ...(payload.ats_upgrade ? { ats_upgrade: payload.ats_upgrade } : {}),
     job_description: payload.job_description,
     source_resume: payload.source_resume,
     display_name: payload.display_name.trim(),
@@ -217,7 +218,7 @@ export async function generateResumeViaPuter(
   const puterModel = resolvePuterModel(route.provider, route.model);
   const maxTokens = Math.min(body.anthropic_max_tokens ?? 8192, 8192);
 
-  const preamble = `${STATIC_TAILOR_INSTRUCTIONS}\n\n${body.system_prompt.trim()}${JSON_OBJECT_ONLY_FOOTER}`;
+  const preamble = `${STATIC_TAILOR_INSTRUCTIONS}\n\n${resolveTailorUserPrompt(body.ats_upgrade)}${JSON_OBJECT_ONLY_FOOTER}`;
   const fullPrompt = `${preamble}\n\n${buildUserPayload(body)}`;
 
   let response: unknown;

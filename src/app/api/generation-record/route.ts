@@ -70,7 +70,6 @@ export async function POST(request: Request): Promise<NextResponse> {
         phone: generation.phone ?? null,
         address: generation.address ?? null,
         linkedin: generation.linkedin ?? null,
-        system_prompt: generation.system_prompt.trim(),
         source_resume: generation.source_resume.trim(),
         llm_provider: generation.llm_provider ?? null,
         llm_model: generation.llm_model ?? null,
@@ -89,7 +88,6 @@ export async function POST(request: Request): Promise<NextResponse> {
   const { error: logErr } = await supabase.from("generation_logs").insert({
     user_id: user.id,
     user_email: user.email ?? null,
-    system_prompt: generation.system_prompt,
     job_description: generation.job_description,
     source_resume: generation.source_resume,
     display_name: generation.display_name,

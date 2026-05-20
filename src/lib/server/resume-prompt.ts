@@ -1,5 +1,6 @@
 import type { Resume } from "@/lib/types";
 import type {
+  AtsUpgradeInput,
   GenerateResumeRequestParsed,
   ResumeParsed,
 } from "./schemas";
@@ -12,6 +13,55 @@ export const TOTAL_WORK_EXPERIENCE_RULES = `When stating total work experience (
 - Compute X: Total professional years = merged months from first post-grad role start through the latest role end (or today), divided by 12, rounded down; use "X+ years" only when supported. If dates are partial or ambiguous, use the lower defensible X.
 - Sanity cap: X must not exceed calendar years since graduation when graduation is known.
 - Consistency: The first summary sentence must use this X; experience dates must not imply a longer career than X.`;
+
+/** Server-owned second system block (formerly user-editable "Tailoring rules"). */
+export const DEFAULT_TAILOR_USER_PROMPT = `You are an expert ATS resume strategist. Tailor the resume to the target job using only truthful facts from the candidate source material. Preserve every distinct employer/role and employment date. Set a clear target title from the job title or closest truthful supported variant. Put the strongest supported must-have phrases in the first summary sentence, including "X+ years" where X is computed from graduation year and chronological employment (see total work experience rules below). Order 8-18 skills by exact job-description must-haves first, and weave supported requirements into experience evidence. For each experience entry, write exactly 3 concise bullets: one role-alignment bullet, one measurable impact bullet when evidence exists, and one tools/process/leadership bullet matched to the job description. Mirror important job-description keywords naturally in the target title, summary, skills, and bullets, but never fabricate, exaggerate, or keyword-stuff. Keep the resume recruiter-readable, ATS-safe, and focused on strongest supported evidence.
+
+${TOTAL_WORK_EXPERIENCE_RULES}`;
+
+export function buildAtsUpgradeSystemPrompt(
+  basePrompt: string,
+  ats: AtsUpgradeInput,
+): string {
+  const missingByGroup = ats.requirementGroups
+    .filter((group) => group.missing.length > 0)
+    .map(
+      (group) =>
+        `- ${group.label}: ${group.missing.slice(0, 8).join(", ")}`,
+    )
+    .slice(0, 5);
+  const prioritySuggestions = ats.suggestions
+    .filter((s) => s.severity === "high" || s.severity === "medium")
+    .slice(0, 10)
+    .map((s) => `- ${s.title}: ${s.description}`);
+
+  return `${basePrompt.trim()}
+
+ATS upgrade request:
+- Regenerate the resume to improve the enterprise ATS simulation score while preserving truthfulness and recruiter readability.
+- Current ATS profile: ${ats.platform.label} (${ats.platform.strictness.replace("_", " ")}).
+- Current score: ${ats.score}/100.
+- Score reasons:
+${ats.topReasons.map((reason) => `  - ${reason}`).join("\n") || "  - No specific score reasons."}
+- Missing or weak requirement coverage:
+${missingByGroup.length ? missingByGroup.join("\n") : "- No major missing requirement groups."}
+- Priority fixes:
+${prioritySuggestions.length ? prioritySuggestions.join("\n") : "- Keep the resume concise, clear, and ATS-readable."}
+
+Upgrade instructions:
+- Set target_title to the exact job title or closest truthful supported variant.
+- Rewrite the first summary sentence to include the target role and the strongest supported must-have phrases; recompute X+ years using the total work experience rules from candidate source material and do not increase X beyond what employment and graduation dates support.
+- Reorder skills to 8-18 concise items, placing exact supported must-have terms first.
+- Rewrite experience bullets so supported must-have requirements appear as evidence inside bullets, not only as skills.
+- Use strong action verbs and truthful metrics when present in the source; if no numbers exist, use truthful scope without inventing metrics.
+
+Apply these findings by improving the target title, summary, skills, and experience bullets where the candidate source material supports it. Do not invent claims, do not add unsupported skills, and do not keyword-stuff. Use exact job-description terminology only when it is truthful and supported by the candidate facts.`;
+}
+
+export function resolveTailorUserPrompt(atsUpgrade?: AtsUpgradeInput): string {
+  if (!atsUpgrade) return DEFAULT_TAILOR_USER_PROMPT;
+  return buildAtsUpgradeSystemPrompt(DEFAULT_TAILOR_USER_PROMPT, atsUpgrade);
+}
 
 export const STATIC_TAILOR_INSTRUCTIONS = `You are a senior resume strategist and career architect who builds high-converting, ATS-optimized resumes.
 Your task: produce JSON only (schema enforced by the API) with three top-level keys: \`company_name\`, \`job_title\`, and \`resume\`.

@@ -3,9 +3,47 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 
 const pdfTemplateZ = z.enum(["classic", "minimal", "structured", "editorial"]);
 
+const atsStrictnessZ = z.enum(["standard", "strict", "very_strict"]);
+
+export const atsUpgradeSchema = z
+  .object({
+    score: z.number().min(0).max(100),
+    platform: z
+      .object({
+        label: z.string().min(1).max(200),
+        strictness: atsStrictnessZ,
+      })
+      .strict(),
+    topReasons: z.array(z.string().max(500)).max(20),
+    requirementGroups: z
+      .array(
+        z
+          .object({
+            label: z.string().min(1).max(200),
+            missing: z.array(z.string().max(200)).max(50),
+          })
+          .strict(),
+      )
+      .max(20),
+    suggestions: z
+      .array(
+        z
+          .object({
+            severity: z.enum(["high", "medium", "low"]),
+            title: z.string().min(1).max(300),
+            description: z.string().min(1).max(2000),
+          })
+          .strict(),
+      )
+      .max(30),
+  })
+  .strict();
+
+export type AtsUpgradeInput = z.infer<typeof atsUpgradeSchema>;
+
 export const generateResumeRequestSchema = z
   .object({
-    system_prompt: z.string().min(10).max(20000),
+    ats_upgrade: atsUpgradeSchema.optional(),
     job_description: z.string().min(20).max(50000),
     source_resume: z.string().min(20).max(100000),
     display_name: z

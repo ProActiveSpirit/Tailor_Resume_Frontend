@@ -22,6 +22,7 @@ import { useRouter } from "next/navigation";
 import { UserMenu } from "@/components/user-menu";
 import { computeATS, type ATSResult, type ATSSuggestion } from "@/lib/ats-engine";
 import {
+  atsResultToUpgradeInput,
   generateCoverLetter,
   generateResume,
   type GeneratePayload,
@@ -40,7 +41,6 @@ import {
 import { formatResumeDateRange } from "@/lib/resume-date-format";
 import type { GenerateResumeResponse, GenerationMeta, Resume } from "@/lib/types";
 import { contactRowText } from "@/lib/resume-contact-lines";
-import { TOTAL_WORK_EXPERIENCE_RULES } from "@/lib/server/resume-prompt";
 import {
   type TailorInitialProfile,
   TAILOR_PROFILE_DB_COLUMNS,
@@ -62,67 +62,16 @@ type FormRef = MutableRefObject<HTMLFormElement | null>;
 
 const TAILOR_WORKSHOP_LAST_EDITOR_KEY = "tailor-workshop-last-editor";
 
-function readLastWorkshopEditor(): "system" | "experience" {
-  if (typeof window === "undefined") return "system";
+function readLastWorkshopExperienceOpen(): boolean {
+  if (typeof window === "undefined") return false;
   try {
-    const v = window.sessionStorage.getItem(TAILOR_WORKSHOP_LAST_EDITOR_KEY);
-    return v === "experience" ? "experience" : "system";
+    return (
+      window.sessionStorage.getItem(TAILOR_WORKSHOP_LAST_EDITOR_KEY) ===
+      "experience"
+    );
   } catch {
-    return "system";
+    return false;
   }
-}
-
-const SYSTEM_PROMPT_SOFT_WARN_CHARS = 12_000;
-
-const DEFAULT_SYSTEM_PROMPT = `You are an expert ATS resume strategist. Tailor the resume to the target job using only truthful facts from the candidate source material. Preserve every distinct employer/role and employment date. Set a clear target title from the job title or closest truthful supported variant. Put the strongest supported must-have phrases in the first summary sentence, including "X+ years" where X is computed from graduation year and chronological employment (see total work experience rules below). Order 8-18 skills by exact job-description must-haves first, and weave supported requirements into experience evidence. For each experience entry, write exactly 3 concise bullets: one role-alignment bullet, one measurable impact bullet when evidence exists, and one tools/process/leadership bullet matched to the job description. Mirror important job-description keywords naturally in the target title, summary, skills, and bullets, but never fabricate, exaggerate, or keyword-stuff. Keep the resume recruiter-readable, ATS-safe, and focused on strongest supported evidence.
-
-${TOTAL_WORK_EXPERIENCE_RULES}`;
-
-function buildAtsUpgradeSystemPrompt(
-  basePrompt: string,
-  ats: ATSResult,
-): string {
-  const missingByGroup = ats.requirementGroups
-    .filter((group) => group.missing.length > 0)
-    .map(
-      (group) =>
-        `- ${group.label}: ${group.missing.slice(0, 8).join(", ")}`,
-    )
-    .slice(0, 5);
-  const prioritySuggestions = ats.suggestions
-    .filter((s) => s.severity === "high" || s.severity === "medium")
-    .slice(0, 10)
-    .map((s) => `- ${s.title}: ${s.description}`);
-
-  return `${basePrompt.trim()}
-
-ATS upgrade request:
-- Regenerate the resume to improve the enterprise ATS simulation score while preserving truthfulness and recruiter readability.
-- Current ATS profile: ${ats.platform.label} (${ats.platform.strictness.replace("_", " ")}).
-- Current score: ${ats.score}/100.
-- Score reasons:
-${ats.topReasons.map((reason) => `  - ${reason}`).join("\n") || "  - No specific score reasons."}
-- Missing or weak requirement coverage:
-${missingByGroup.length ? missingByGroup.join("\n") : "- No major missing requirement groups."}
-- Priority fixes:
-${prioritySuggestions.length ? prioritySuggestions.join("\n") : "- Keep the resume concise, clear, and ATS-readable."}
-
-Upgrade instructions:
-- Set target_title to the exact job title or closest truthful supported variant.
-- Rewrite the first summary sentence to include the target role and the strongest supported must-have phrases; recompute X+ years using the total work experience rules from candidate source material and do not increase X beyond what employment and graduation dates support.
-- Reorder skills to 8-18 concise items, placing exact supported must-have terms first.
-- Rewrite experience bullets so supported must-have requirements appear as evidence inside bullets, not only as skills.
-- Use strong action verbs and truthful metrics when present in the source; if no numbers exist, use truthful scope without inventing metrics.
-
-Apply these findings by improving the target title, summary, skills, and experience bullets where the candidate source material supports it. Do not invent claims, do not add unsupported skills, and do not keyword-stuff. Use exact job-description terminology only when it is truthful and supported by the candidate facts.`;
-}
-
-function initialSystemPromptFromProfile(
-  row: TailorInitialProfile | null,
-): string {
-  return typeof row?.system_prompt === "string" && row.system_prompt.trim()
-    ? row.system_prompt.trim()
-    : DEFAULT_SYSTEM_PROMPT;
 }
 
 function initialSourceResumeFromProfile(row: TailorInitialProfile | null): string {
@@ -247,8 +196,6 @@ type ApplyTailorProfileRowSetters = {
   setPhone: Dispatch<SetStateAction<string>>;
   setAddress: Dispatch<SetStateAction<string>>;
   setLinkedin: Dispatch<SetStateAction<string>>;
-  setSystemPrompt: Dispatch<SetStateAction<string>>;
-  setSystemBaseline: Dispatch<SetStateAction<string>>;
   setSourceResume: Dispatch<SetStateAction<string>>;
   setExperienceBaseline: Dispatch<SetStateAction<string>>;
   setPdfTemplate: Dispatch<SetStateAction<PdfTemplate>>;
@@ -276,10 +223,7 @@ function applyTailorProfileRow(
   if (typeof row.address === "string" && row.address) s.setAddress(row.address);
   if (typeof row.linkedin === "string" && row.linkedin) s.setLinkedin(row.linkedin);
   {
-    const nextSys = initialSystemPromptFromProfile(row);
     const nextSrc = initialSourceResumeFromProfile(row);
-    s.setSystemPrompt(nextSys);
-    s.setSystemBaseline(nextSys);
     s.setSourceResume(nextSrc);
     s.setExperienceBaseline(nextSrc);
   }
@@ -456,12 +400,6 @@ export function TailorHomeClient({
   authEmail,
 }: TailorHomeClientProps) {
   const router = useRouter();
-  const [systemPrompt, setSystemPrompt] = useState(() =>
-    initialSystemPromptFromProfile(initialProfile),
-  );
-  const [systemBaseline, setSystemBaseline] = useState(() =>
-    initialSystemPromptFromProfile(initialProfile),
-  );
   const [jobDescription, setJobDescription] = useState("");
   const [sourceResume, setSourceResume] = useState(() =>
     initialSourceResumeFromProfile(initialProfile),
@@ -512,18 +450,13 @@ export function TailorHomeClient({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null as string | null);
   const [result, setResult] = useState(null as TailorResultState);
-  const [systemPromptSavedAt, setSystemPromptSavedAt] = useState(
-    null as number | null,
-  );
   const [experienceSavedAt, setExperienceSavedAt] = useState(
     null as number | null,
   );
-  const [savingTailoringRules, setSavingTailoringRules] = useState(false);
   const [savingExperienceDraft, setSavingExperienceDraft] = useState(false);
 
   const [mobileJobOpen, setMobileJobOpen] = useState(true);
   /** Match server first paint; session preference applied in useEffect after mount. */
-  const [mobileSystemOpen, setMobileSystemOpen] = useState(true);
   const [mobileExperienceOpen, setMobileExperienceOpen] = useState(false);
 
   const [atsOpen, setAtsOpen] = useState(false);
@@ -538,14 +471,8 @@ export function TailorHomeClient({
   const [coverLetterLoading, setCoverLetterLoading] = useState(false);
 
   const formRef = useRef(null) as FormRef;
-  const sysTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const srcTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const serverSystemPromptSnapshot =
-    initialProfile?.system_prompt === null ||
-    typeof initialProfile?.system_prompt !== "string"
-      ? null
-      : initialProfile.system_prompt;
   const serverSourceResumeSnapshot =
     initialProfile?.source_resume === null ||
     typeof initialProfile?.source_resume !== "string"
@@ -554,34 +481,21 @@ export function TailorHomeClient({
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- read sessionStorage after mount so SSR and first client paint match */
-    const last = readLastWorkshopEditor();
-    if (last === "experience") {
-      setMobileSystemOpen(false);
-      setMobileExperienceOpen(true);
-    } else {
-      setMobileSystemOpen(true);
-      setMobileExperienceOpen(false);
-    }
+    setMobileExperienceOpen(readLastWorkshopExperienceOpen());
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   useEffect(() => {
     const row = {
-      system_prompt: serverSystemPromptSnapshot,
       source_resume: serverSourceResumeSnapshot,
     } as TailorInitialProfile;
-    const sys = initialSystemPromptFromProfile(row);
     const src = initialSourceResumeFromProfile(row);
     /* eslint-disable react-hooks/set-state-in-effect -- mirror DB columns when server snapshot changes after refresh/navigation */
-    setSystemPrompt((prev) => (prev !== sys ? sys : prev));
-    setSystemBaseline((prev) => (prev !== sys ? sys : prev));
     setSourceResume((prev) => (prev !== src ? src : prev));
     setExperienceBaseline((prev) => (prev !== src ? src : prev));
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [serverSystemPromptSnapshot, serverSourceResumeSnapshot]);
+  }, [serverSourceResumeSnapshot]);
 
-  const systemDirty =
-    systemPrompt.trim() !== systemBaseline;
   const experienceDirty =
     sourceResume.trim() !== experienceBaseline;
 
@@ -589,26 +503,10 @@ export function TailorHomeClient({
     setMobileJobOpen((v) => !v);
   }, []);
 
-  const toggleMobileSystem = useCallback(() => {
-    setMobileSystemOpen((prev) => {
-      const next = !prev;
-      if (next) {
-        setMobileExperienceOpen(false);
-        try {
-          sessionStorage.setItem(TAILOR_WORKSHOP_LAST_EDITOR_KEY, "system");
-        } catch {
-          void 0;
-        }
-      }
-      return next;
-    });
-  }, []);
-
   const toggleMobileExperience = useCallback(() => {
     setMobileExperienceOpen((prev) => {
       const next = !prev;
       if (next) {
-        setMobileSystemOpen(false);
         try {
           sessionStorage.setItem(TAILOR_WORKSHOP_LAST_EDITOR_KEY, "experience");
         } catch {
@@ -640,8 +538,6 @@ export function TailorHomeClient({
               setPhone,
               setAddress,
               setLinkedin,
-              setSystemPrompt,
-              setSystemBaseline,
               setSourceResume,
               setExperienceBaseline,
               setPdfTemplate,
@@ -678,8 +574,6 @@ export function TailorHomeClient({
           setPhone,
           setAddress,
           setLinkedin,
-          setSystemPrompt,
-          setSystemBaseline,
           setSourceResume,
           setExperienceBaseline,
           setPdfTemplate,
@@ -718,7 +612,6 @@ export function TailorHomeClient({
       displayName.trim().length > 0 &&
       isValidEmailAddress(email) &&
       linkedinOk &&
-      systemPrompt.trim().length >= 10 &&
       jobDescription.trim().length >= 20 &&
       sourceResume.trim().length >= 20
     );
@@ -726,7 +619,6 @@ export function TailorHomeClient({
     displayName,
     email,
     linkedinOk,
-    systemPrompt,
     jobDescription,
     sourceResume,
   ]);
@@ -737,7 +629,7 @@ export function TailorHomeClient({
       setError(null);
       if (!canSubmit) {
         setError(
-          "Complete your contact details on Profile (display name and valid email required). On this page, paste the job description (20+ characters), add system prompt (10+ characters), and experience (20+ characters). If LinkedIn is set on Profile, it must be a valid http(s) URL.",
+          "Complete your contact details on Profile (display name and valid email required). On this page, paste the job description (20+ characters) and your experience (20+ characters). If LinkedIn is set on Profile, it must be a valid http(s) URL.",
         );
         return;
       }
@@ -751,7 +643,6 @@ export function TailorHomeClient({
           return;
         }
         const generationPayload: GeneratePayload = {
-          system_prompt: systemPrompt,
           job_description: jd,
           source_resume: sourceResume,
           display_name: displayName.trim(),
@@ -797,7 +688,6 @@ export function TailorHomeClient({
     },
     [
       canSubmit,
-      systemPrompt,
       jobDescription,
       sourceResume,
       displayName,
@@ -822,7 +712,6 @@ export function TailorHomeClient({
     `h-[6rem] w-full shrink-0 resize-none overflow-y-auto rounded-xl border border-[var(--border-muted)] ${fieldFill} px-3 py-2 text-sm text-stone-800 shadow-inner outline-none ring-accent/20 transition placeholder:text-stone-500 focus:border-accent focus:ring-2 focus:ring-accent/25`;
   const textareaWorkshopShell =
     `w-full min-h-0 shrink-0 resize-none overflow-y-auto rounded-xl border border-[var(--border-muted)] ${fieldFill} px-3 py-2 text-sm text-stone-800 shadow-inner outline-none ring-accent/20 transition placeholder:text-stone-500 focus:border-accent focus:ring-2 focus:ring-accent/25`;
-  const textareaWorkshopSystem = `${textareaWorkshopShell} h-[12rem] w-full font-mono text-[13px] leading-relaxed`;
   const textareaWorkshopExperience = `${textareaWorkshopShell} h-[10rem] w-full leading-relaxed`;
   const fieldControl =
     `min-h-11 w-full rounded-lg border border-[var(--border-muted)] ${fieldFill} px-3 py-2 text-sm text-stone-800 outline-none focus:border-accent focus:ring-2 focus:ring-accent/25`;
@@ -830,36 +719,6 @@ export function TailorHomeClient({
     "inline-flex min-h-8 shrink-0 items-center justify-center rounded-lg bg-accent-strong px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-accent-pressed disabled:cursor-not-allowed disabled:opacity-50";
   const workshopBtnSecondary =
     "inline-flex min-h-8 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-muted)] bg-[var(--paper)] px-2.5 py-1 text-xs font-semibold text-stone-800 shadow-sm transition hover:border-accent hover:bg-accent-soft/50 disabled:cursor-not-allowed disabled:opacity-50";
-
-  const saveSystemPromptToProfile = useCallback(async () => {
-    setError(null);
-    const trimmed = systemPrompt.trim();
-    if (trimmed.length < 10) {
-      setError("System prompt must be at least 10 characters to save.");
-      return;
-    }
-    setSavingTailoringRules(true);
-    try {
-      const result = await patchProfileFields({ system_prompt: trimmed });
-      if (!result.ok) {
-        if (result.status === 401) {
-          setError(result.detail);
-          router.replace("/login");
-          router.refresh();
-          return;
-        }
-        console.error("profiles system_prompt persist failed:", result.detail);
-        setError(result.detail);
-        return;
-      }
-      setSystemPrompt(trimmed);
-      setSystemBaseline(trimmed);
-      setSystemPromptSavedAt(Date.now());
-      window.setTimeout(() => setSystemPromptSavedAt(null), 2800);
-    } finally {
-      setSavingTailoringRules(false);
-    }
-  }, [systemPrompt, router]);
 
   const saveExperienceToProfile = useCallback(async () => {
     setError(null);
@@ -1040,12 +899,8 @@ export function TailorHomeClient({
 
     setResumeUpgradeLoading(true);
     try {
-      const upgradedSystemPrompt = buildAtsUpgradeSystemPrompt(
-        systemPrompt,
-        atsResult,
-      );
       const generationPayload: GeneratePayload = {
-        system_prompt: upgradedSystemPrompt,
+        ats_upgrade: atsResultToUpgradeInput(atsResult),
         job_description: jd,
         source_resume: sourceResume,
         display_name: displayName.trim(),
@@ -1088,7 +943,6 @@ export function TailorHomeClient({
     result,
     atsResult,
     jobDescription,
-    systemPrompt,
     sourceResume,
     displayName,
     email,
@@ -1225,78 +1079,6 @@ export function TailorHomeClient({
                 <div className="mb-3 flex items-stretch gap-2 lg:hidden">
                   <button
                     type="button"
-                    onClick={toggleMobileSystem}
-                    aria-expanded={mobileSystemOpen}
-                    className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-xl border border-[var(--border-muted)] bg-accent-soft/25 px-3 py-2.5 text-left"
-                  >
-                    <span className={`${uiFieldLabel} !mt-0`}>
-                      Tailoring rules
-                    </span>
-                    {workshopMobileChevron(mobileSystemOpen)}
-                  </button>
-                  {systemDirty ? (
-                    <button
-                      type="button"
-                      disabled={savingTailoringRules}
-                      onClick={() => void saveSystemPromptToProfile()}
-                      className={workshopBtnPrimary}
-                    >
-                      Save tailoring rules
-                    </button>
-                  ) : null}
-                </div>
-                <div className="mb-2 hidden items-center justify-between gap-3 lg:flex">
-                  <h3 className={`${uiFieldLabel} mb-0 min-w-0`}>
-                    Tailoring rules
-                  </h3>
-                  {systemDirty ? (
-                    <button
-                      type="button"
-                      disabled={savingTailoringRules}
-                      onClick={() => void saveSystemPromptToProfile()}
-                      className={workshopBtnPrimary}
-                    >
-                      Save tailoring rules
-                    </button>
-                  ) : null}
-                </div>
-                <div
-                  className={
-                    !mobileSystemOpen ? "hidden lg:block" : "block"
-                  }
-                >
-                  <textarea
-                    ref={sysTextareaRef}
-                    id="sys"
-                    value={systemPrompt}
-                    onChange={(e) => setSystemPrompt(e.target.value)}
-                    className={textareaWorkshopSystem}
-                    placeholder="Tailoring rules…"
-                    autoComplete="off"
-                    spellCheck
-                  />
-                  {systemPrompt.length > SYSTEM_PROMPT_SOFT_WARN_CHARS ? (
-                    <p className="mt-1.5 text-xs text-amber-900/90">
-                      Very long prompts may increase cost and API latency.
-                    </p>
-                  ) : null}
-                  {systemPromptSavedAt ? (
-                    <div className="sticky bottom-0 z-[2] -mx-3 mt-3 border-t border-[var(--border-muted)] bg-[color:color-mix(in_srgb,var(--card)_93%,transparent)] px-3 py-3 backdrop-blur-[6px] sm:-mx-4 sm:px-4">
-                      <p
-                        className="text-xs font-medium text-emerald-700"
-                        role="status"
-                      >
-                        Tailoring rules saved
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="mt-4 border-t border-[var(--border-muted)] pt-4">
-                <div className="mb-3 flex items-stretch gap-2 lg:hidden">
-                  <button
-                    type="button"
                     onClick={toggleMobileExperience}
                     aria-expanded={mobileExperienceOpen}
                     className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-xl border border-[var(--border-muted)] bg-accent-soft/25 px-3 py-2.5 text-left"
@@ -1422,11 +1204,11 @@ export function TailorHomeClient({
                       >
                         Profile
                       </Link>
-                      . Edit tailoring rules and your experience below (use{" "}
+                      . Edit your experience below (use{" "}
                       <span className={uiHintEmphasis}>
-                        Save
+                        Save experience
                       </span>{" "}
-                      on each section to clear its unsaved indicator).
+                      to clear its unsaved indicator).
                     </p>
                   </div>
                 ) : (

@@ -8,7 +8,6 @@ export type GenerationLogRow = {
   user_id: string;
   created_at: string;
   user_email: string | null;
-  system_prompt: string;
   job_description: string;
   source_resume: string;
   display_name: string;
@@ -185,14 +184,6 @@ export function AdminGenerationLogTable({
                                 {row.cache_creation_input_tokens ?? "—"}
                               </span>
                             ) : null}
-                          </div>
-                          <div>
-                            <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-accent">
-                              System prompt
-                            </h3>
-                            <pre className={promptBlock} tabIndex={0}>
-                              {row.system_prompt}
-                            </pre>
                           </div>
                           <div>
                             <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-accent">

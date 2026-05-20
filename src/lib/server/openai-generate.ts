@@ -3,6 +3,7 @@ import { createServerOpenAIClient } from "./openai-client";
 import {
   buildUserPayload,
   JSON_OBJECT_ONLY_FOOTER,
+  resolveTailorUserPrompt,
   STATIC_TAILOR_INSTRUCTIONS,
 } from "./resume-prompt";
 import { parseTailoredGenerationFromLlm } from "./tailored-output-parse";
@@ -52,7 +53,7 @@ export async function generateResumeOpenAI(
 
   const client = createServerOpenAIClient();
 
-  const systemText = `${STATIC_TAILOR_INSTRUCTIONS}\n\n${body.system_prompt.trim()}${JSON_OBJECT_ONLY_FOOTER}`;
+  const systemText = `${STATIC_TAILOR_INSTRUCTIONS}\n\n${resolveTailorUserPrompt(body.ats_upgrade)}${JSON_OBJECT_ONLY_FOOTER}`;
 
   const completion = await client.chat.completions.create({
     model: resolvedModel,

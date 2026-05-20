@@ -1,8 +1,32 @@
+import type { ATSResult } from "./ats-engine";
+import type { AtsUpgradeInput } from "./server/schemas";
 import type {
   GenerateCoverLetterResponse,
   GenerateResumeResponse,
   Resume,
 } from "./types";
+
+export type { AtsUpgradeInput };
+
+export function atsResultToUpgradeInput(ats: ATSResult): AtsUpgradeInput {
+  return {
+    score: ats.score,
+    platform: {
+      label: ats.platform.label,
+      strictness: ats.platform.strictness,
+    },
+    topReasons: ats.topReasons,
+    requirementGroups: ats.requirementGroups.map((g) => ({
+      label: g.label,
+      missing: g.missing,
+    })),
+    suggestions: ats.suggestions.map((s) => ({
+      severity: s.severity,
+      title: s.title,
+      description: s.description,
+    })),
+  };
+}
 
 const SESSION_EXPIRED_DETAIL =
   "Your session expired. Please sign in again.";
@@ -12,7 +36,7 @@ export type LlmProvider = "anthropic" | "openai";
 export type PdfTemplate = "classic" | "minimal" | "structured" | "editorial";
 
 export type GeneratePayload = {
-  system_prompt: string;
+  ats_upgrade?: AtsUpgradeInput;
   job_description: string;
   source_resume: string;
   display_name: string;

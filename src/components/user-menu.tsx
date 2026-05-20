@@ -110,12 +110,8 @@ export function UserMenu() {
       if (clientErr && !serverOk) {
         console.error("[sign-out] client and server sign-out failed:", clientErr.message);
       }
-
-      setEmail(null);
-      setAppRole("normal");
-      window.location.replace("/login");
     } finally {
-      setSigningOut(false);
+      window.location.replace("/login");
     }
   }, []);
 

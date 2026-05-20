@@ -114,7 +114,7 @@ const experienceItemSchema = z.object({
   company: z.string().min(1).max(200),
   location: z.string().max(200).nullable(),
   dates: z.string().min(1).max(80),
-  bullets: z.array(z.string()).length(3),
+  bullets: z.array(z.string()).min(3).max(8),
 });
 
 const educationItemSchema = z.object({
@@ -130,6 +130,12 @@ const projectItemSchema = z.object({
   bullets: z.array(z.string()).max(8),
 });
 
+const certificationItemSchema = z.object({
+  name: z.string().min(1).max(300),
+  issuer: z.string().min(1).max(200),
+  year: z.string().max(20).nullable(),
+});
+
 export const resumeSchema = z.object({
   target_title: z.string().max(200).nullable(),
   contact: contactSchema,
@@ -138,6 +144,7 @@ export const resumeSchema = z.object({
   experience: z.array(experienceItemSchema).min(1).max(15),
   education: z.array(educationItemSchema).max(10),
   projects: z.array(projectItemSchema).max(10),
+  certifications: z.array(certificationItemSchema).max(10).default([]),
 });
 
 export type ResumeParsed = z.infer<typeof resumeSchema>;

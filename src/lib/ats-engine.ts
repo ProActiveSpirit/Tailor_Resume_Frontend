@@ -255,7 +255,15 @@ export function resumeToPlainText(resume: Resume): string {
   const parts: string[] = [];
   if (resume.target_title) parts.push(resume.target_title);
   parts.push(resume.summary);
-  parts.push(...resume.skills);
+  // Expand sector-grouped skill strings so individual skill names are searchable
+  for (const skill of resume.skills) {
+    parts.push(skill);
+    const colonIdx = skill.indexOf(": ");
+    if (colonIdx !== -1) {
+      const items = skill.slice(colonIdx + 2).split(",").map((s) => s.trim());
+      parts.push(...items);
+    }
+  }
   for (const e of resume.experience) {
     parts.push(e.title, e.company, e.dates, ...(e.location ? [e.location] : []));
     parts.push(...e.bullets);
@@ -265,6 +273,9 @@ export function resumeToPlainText(resume: Resume): string {
   }
   for (const p of resume.projects) {
     parts.push(p.name, p.description ?? "", ...p.bullets);
+  }
+  for (const cert of resume.certifications ?? []) {
+    parts.push(cert.name, cert.issuer, cert.year ?? "");
   }
   parts.push(
     resume.contact.name,
@@ -376,7 +387,6 @@ type MatchDetail = {
 };
 
 type ComputeATSOptions = {
-  jobUrl?: string;
   sourceResume?: string;
 };
 
@@ -558,40 +568,11 @@ function clampScore(n: number, max: number): number {
   return Math.max(0, Math.min(max, Math.round(n)));
 }
 
-function detectATSPlatform(jobUrl?: string): ATSPlatform {
-  const fallback: ATSPlatform = {
+function detectATSPlatform(): ATSPlatform {
+  return {
     ...PLATFORM_PROFILES.enterprise_generic,
     confidence: "low",
   };
-  if (!jobUrl?.trim()) return fallback;
-
-  let haystack = "";
-  try {
-    const url = new URL(jobUrl);
-    haystack = `${url.hostname} ${url.pathname}`.toLowerCase();
-  } catch {
-    haystack = jobUrl.toLowerCase();
-  }
-
-  const checks: Array<[ATSPlatform["id"], RegExp]> = [
-    ["workday", /\bmyworkdayjobs\b|workdayjobs|\.wd\d+\.myworkdayjobs|\/workday\b/],
-    ["taleo", /\btaleo\b|oraclecloud\.com\/hcmui|\/careersection\//],
-    ["successfactors", /\bsuccessfactors\b|jobs\.sap\.com|career\d+\.successfactors/],
-    ["icims", /\bicims\b|\.icims\.com|jobs\.[^.]+\.com\/jobs\/.+icims/],
-    ["greenhouse", /\bgreenhouse\b|boards\.greenhouse\.io|job-boards\.greenhouse\.io/],
-    ["lever", /\blever\.co\b|jobs\.lever\.co/],
-    ["ashby", /\bashbyhq\b|jobs\.ashbyhq\.com/],
-    ["smartrecruiters", /\bsmartrecruiters\b|jobs\.smartrecruiters\.com/],
-    ["adp", /\badp\b|workforcenow\.adp\.com|adpworkforcenow/],
-    ["ukg", /\bukg\b|ultipro\b|recruiting\.ultipro\.com/],
-  ];
-
-  for (const [id, re] of checks) {
-    if (re.test(haystack)) {
-      return { ...PLATFORM_PROFILES[id], confidence: "high" };
-    }
-  }
-  return fallback;
 }
 
 function currentBucketForLine(line: string, current: RequirementBucket): RequirementBucket {
@@ -769,10 +750,24 @@ function hasStandardDate(value: string): boolean {
   );
 }
 
+function countIndividualSkills(skills: string[]): number {
+  let total = 0;
+  for (const s of skills) {
+    const colonIdx = s.indexOf(": ");
+    if (colonIdx !== -1) {
+      total += s.slice(colonIdx + 2).split(",").length;
+    } else {
+      total += 1;
+    }
+  }
+  return total;
+}
+
 function hasKeywordStuffing(resume: Resume): boolean {
   const skills = resume.skills.map(normalizeForMatch).filter(Boolean);
   const unique = new Set(skills);
-  if (resume.skills.length > 32) return true;
+  // Sector-grouped strings (7–8 entries) are never stuffing; flat lists over 38 are
+  if (resume.skills.length > 38) return true;
   if (skills.length && unique.size / skills.length < 0.82) return true;
   return resume.summary.split(/[,;|]/).length > 10;
 }
@@ -795,7 +790,7 @@ export function computeATS(
   const resumeNorm = resumeToPlainText(resume);
   const sourceNorm = normalizeForMatch(options.sourceResume ?? "");
   const jdTrim = jobDescription.trim();
-  const platform = detectATSPlatform(options.jobUrl);
+  const platform = detectATSPlatform();
   const terms = extractRequirementTerms(jobDescription);
   const details = terms.map((term) => matchRequirement(resumeNorm, term));
   const requirementGroups = buildRequirementGroups(details);
@@ -871,7 +866,7 @@ export function computeATS(
   if (resume.contact.phone?.trim()) parserSafetyPoints += 0.75;
   if (resume.contact.location?.trim()) parserSafetyPoints += 0.75;
   if (resume.summary.trim().length >= 60) parserSafetyPoints += 1;
-  if (resume.skills.length >= 6 && resume.skills.length <= 28)
+  if (resume.skills.length >= 5 && resume.skills.length <= 35)
     parserSafetyPoints += 1.25;
   if (resume.experience.length >= 1) parserSafetyPoints += 1.25;
   if (resume.experience.every((e) => hasStandardDate(e.dates)))
@@ -1017,14 +1012,14 @@ export function computeATS(
     });
   }
 
-  if (resume.skills.length < 8) {
+  if (countIndividualSkills(resume.skills) < 8) {
     suggestions.push({
       id: "skills:coverage",
       category: "skills",
       severity: "medium",
       title: "Increase verified skills coverage",
       description:
-        "Aim for 8-18 concise, truthful skills that map to the posting's must-have tools and responsibilities.",
+        "Aim for 20–28 skills grouped by sector (e.g. 'AI & ML: LangChain, PyTorch, RAG'), covering the posting's must-have tools and domain responsibilities.",
       canApply: false,
     });
   }
@@ -1100,7 +1095,7 @@ export function computeATS(
       contact: { score: Math.min(parserSafetyScore, 10), max: 10 },
       bullets: { score: impactScore, max: WEIGHT_IMPACT },
       skillsDensity: {
-        score: Math.min(10, Math.round((resume.skills.length / 18) * 10)),
+        score: Math.min(10, Math.round((countIndividualSkills(resume.skills) / 25) * 10)),
         max: 10,
       },
     },
@@ -1162,8 +1157,8 @@ export function computeATSLegacy(resume: Resume, jobDescription: string): unknow
     actionRatio * (WEIGHT_BULLETS / 2) + metricRatio * (WEIGHT_BULLETS / 2),
   );
 
-  const idealSkills = 12;
-  const skillCount = resume.skills.length;
+  const idealSkills = 25;
+  const skillCount = countIndividualSkills(resume.skills);
   const densityRatio = Math.min(1, skillCount / idealSkills);
   const skillsScore = Math.round(densityRatio * WEIGHT_SKILLS);
 
@@ -1283,13 +1278,13 @@ export function computeATSLegacy(resume: Resume, jobDescription: string): unknow
     });
   }
 
-  if (skillCount < idealSkills && skillCount < 8) {
+  if (skillCount < idealSkills && skillCount < 15) {
     suggestions.push({
       id: "skills:density",
       category: "skills",
       severity: "low",
       title: "Increase skills coverage",
-      description: `You have ${skillCount} skills listed; aim for around ${idealSkills} concise items that reflect the posting.`,
+      description: `You have ${skillCount} individual skills listed; aim for 25+ grouped by sector (e.g. 'AI & ML: LangChain, RAG, PyTorch') to maximize ATS density scoring.`,
       canApply: false,
     });
   }

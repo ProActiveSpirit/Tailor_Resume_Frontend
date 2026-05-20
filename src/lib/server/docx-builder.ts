@@ -7,7 +7,7 @@ import {
   TabStopType,
   TextRun,
 } from "docx";
-import { contactLines } from "@/lib/resume-contact-lines";
+import { contactRowText } from "@/lib/resume-contact-lines";
 import type { Resume } from "@/lib/types";
 
 const COLORS = {
@@ -137,13 +137,13 @@ export async function resumeToDocxBuffer(resume: Resume): Promise<Buffer> {
     );
   }
 
-  const lines = contactLines(resume);
-  if (lines.length) {
+  const contactRow = contactRowText(resume, "  |  ");
+  if (contactRow) {
     children.push(
       new Paragraph({
         children: [
           new TextRun({
-            text: lines.join("  |  "),
+            text: contactRow,
             size: 18,
             color: COLORS.muted,
             font: FONT,
@@ -162,23 +162,59 @@ export async function resumeToDocxBuffer(resume: Resume): Promise<Buffer> {
     );
   }
 
-  children.push(
-    sectionHeading("Summary"),
-    bodyParagraph(resume.summary, 190),
-    sectionHeading("Skills"),
-    new Paragraph({
-      children: [
-        new TextRun({
-          text: resume.skills.join("  |  "),
-          color: COLORS.body,
-          size: 19,
-          font: FONT,
-        }),
-      ],
-      spacing: { after: 170, line: 230 },
-    }),
-    sectionHeading("Experience"),
-  );
+  children.push(sectionHeading("Summary"), bodyParagraph(resume.summary, 190));
+
+  // Skills — sector-grouped or flat fallback
+  children.push(sectionHeading("Skills"));
+  const hasSectors = resume.skills.some((s) => s.indexOf(": ") !== -1);
+  if (hasSectors) {
+    for (const skill of resume.skills) {
+      const colonIdx = skill.indexOf(": ");
+      if (colonIdx !== -1) {
+        const category = skill.slice(0, colonIdx).trim();
+        const items = skill.slice(colonIdx + 2).trim();
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `${category}: `,
+                bold: true,
+                color: COLORS.accent,
+                size: 19,
+                font: FONT,
+              }),
+              new TextRun({
+                text: items,
+                color: COLORS.body,
+                size: 19,
+                font: FONT,
+              }),
+            ],
+            spacing: { after: 55, line: 230 },
+          }),
+        );
+      } else {
+        children.push(mutedParagraph(skill, 55));
+      }
+    }
+    children.push(new Paragraph({ text: "", spacing: { after: 80 } }));
+  } else {
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: resume.skills.join("  |  "),
+            color: COLORS.body,
+            size: 19,
+            font: FONT,
+          }),
+        ],
+        spacing: { after: 170, line: 230 },
+      }),
+    );
+  }
+
+  children.push(sectionHeading("Experience"));
 
   for (const exp of resume.experience) {
     const companyLine = exp.company + (exp.location ? ` | ${exp.location}` : "");
@@ -257,6 +293,30 @@ export async function resumeToDocxBuffer(resume: Resume): Promise<Buffer> {
       );
       if (meta) children.push(mutedParagraph(meta, 110));
     }
+  }
+
+  const certs = resume.certifications ?? [];
+  if (certs.length) {
+    children.push(sectionHeading("Certifications"));
+    for (const cert of certs) {
+      const meta = [cert.issuer, cert.year].filter(Boolean).join("  ·  ");
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: cert.name,
+              bold: true,
+              color: COLORS.ink,
+              size: 20,
+              font: FONT,
+            }),
+          ],
+          spacing: { after: 30 },
+        }),
+      );
+      if (meta) children.push(mutedParagraph(meta, 100));
+    }
+    children.push(new Paragraph({ text: "", spacing: { after: 80 } }));
   }
 
   if (resume.projects.length) {

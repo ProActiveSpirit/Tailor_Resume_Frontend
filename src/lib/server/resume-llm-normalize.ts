@@ -4,6 +4,21 @@
 
 const ROOT_STRIP_KEYS = new Set(["ats_keywords", "tailoring_notes"]);
 
+function normalizeCertificationItem(item: unknown): unknown {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+  const c = { ...(item as Record<string, unknown>) };
+  c.name = typeof c.name === "string" ? c.name.trim().slice(0, 300) : "";
+  c.issuer = typeof c.issuer === "string" ? c.issuer.trim().slice(0, 200) : "";
+  const yr = c.year ?? c.date ?? c.issued ?? null;
+  c.year =
+    yr !== null && yr !== undefined && yr !== ""
+      ? String(yr).trim().slice(0, 20)
+      : null;
+  delete c.date;
+  delete c.issued;
+  return c;
+}
+
 const EDUCATION_STRIP_KEYS = new Set(["graduation_year"]);
 
 function coerceSkillEntry(entry: unknown): string | undefined {
@@ -58,7 +73,7 @@ function normalizeExperienceItem(item: unknown): unknown {
   delete e.date_range;
 
   e.location = normalizeNullableString(e.location, 200);
-  e.bullets = normalizeBulletArray(e.bullets, 3);
+  e.bullets = normalizeBulletArray(e.bullets, 8);
 
   const dOut =
     typeof e.dates === "string"
@@ -166,6 +181,17 @@ export function normalizeLlmResumeJson(input: unknown): unknown {
       if (coerced !== undefined) out.push(coerced);
     }
     root.skills = out;
+  }
+
+  if (Array.isArray(root.certifications)) {
+    root.certifications = root.certifications
+      .map((item) => normalizeCertificationItem(item))
+      .filter((c) => {
+        const cert = c as Record<string, unknown>;
+        return typeof cert.name === "string" && cert.name.trim().length > 0;
+      });
+  } else {
+    root.certifications = [];
   }
 
   return root;

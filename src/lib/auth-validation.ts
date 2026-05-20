@@ -1,4 +1,4 @@
-/** True if non-empty and parseable as http(s) URL (for job links, optional LinkedIn, etc.). */
+/** True if non-empty and parseable as http(s) URL (e.g. optional LinkedIn on Profile). */
 export function isValidOptionalHttpUrl(raw: string): boolean {
   const s = raw.trim();
   if (!s) return false;

@@ -1,6 +1,5 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
 import {
   isValidEmailAddress,
   isValidOptionalHttpUrl,
@@ -12,6 +11,7 @@ import {
   uiFormDescription,
   uiPanelTitle,
 } from "@/lib/ui-classes";
+import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
 export type ProfileContactInitial = {
@@ -34,6 +34,7 @@ type Props = {
 };
 
 export function ProfileContactForm({ authEmail, initial }: Props) {
+  const router = useRouter();
   const [displayName, setDisplayName] = useState(
     typeof initial.display_name === "string" ? initial.display_name : "",
   );
@@ -73,27 +74,36 @@ export function ProfileContactForm({ authEmail, initial }: Props) {
 
     setSaving(true);
     try {
-      const supabase = createClient();
-      const {
-        data: { user: u },
-      } = await supabase.auth.getUser();
-      if (!u) {
-        setError("Sign in to save your profile.");
-        return;
-      }
-      const { error: upErr } = await supabase
-        .from("profiles")
-        .update({
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           display_name: displayName.trim(),
           email: email.trim(),
           phone: phone.trim() || null,
           address: address.trim() || null,
           linkedin: li || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", u.id);
-      if (upErr) {
-        setError(upErr.message);
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        let detail = text.trim() || res.statusText || `Request failed (${res.status})`;
+        try {
+          const j = JSON.parse(text) as { detail?: unknown };
+          if (typeof j.detail === "string" && j.detail.trim()) {
+            detail = j.detail.trim();
+          }
+        } catch {
+          void 0;
+        }
+        if (res.status === 401) {
+          setError(detail);
+          router.replace("/login");
+          router.refresh();
+          return;
+        }
+        setError(detail);
         return;
       }
       setSavedAt(Date.now());
@@ -101,7 +111,7 @@ export function ProfileContactForm({ authEmail, initial }: Props) {
     } finally {
       setSaving(false);
     }
-  }, [displayName, email, phone, address, linkedin]);
+  }, [displayName, email, phone, address, linkedin, router]);
 
   return (
     <section

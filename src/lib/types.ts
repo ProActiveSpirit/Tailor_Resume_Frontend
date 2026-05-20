@@ -28,6 +28,12 @@ export type ProjectItem = {
   bullets: string[];
 };
 
+export type CertificationItem = {
+  name: string;
+  issuer: string;
+  year: string | null;
+};
+
 export type Resume = {
   target_title: string | null;
   contact: Contact;
@@ -36,6 +42,7 @@ export type Resume = {
   experience: ExperienceItem[];
   education: EducationItem[];
   projects: ProjectItem[];
+  certifications: CertificationItem[];
 };
 
 export type PdfTemplate = "classic" | "minimal" | "structured" | "editorial";

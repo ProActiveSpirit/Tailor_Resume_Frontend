@@ -39,7 +39,7 @@ import {
 } from "@/lib/auth-validation";
 import { formatResumeDateRange } from "@/lib/resume-date-format";
 import type { GenerateResumeResponse, GenerationMeta, Resume } from "@/lib/types";
-import { contactLines } from "@/lib/resume-contact-lines";
+import { contactRowText } from "@/lib/resume-contact-lines";
 import {
   type TailorInitialProfile,
   TAILOR_PROFILE_DB_COLUMNS,
@@ -180,17 +180,6 @@ function isPdfTemplate(value: string): value is PdfTemplate {
   return (PDF_TEMPLATES as readonly string[]).includes(value);
 }
 
-function isValidPublicJobUrl(raw: string): boolean {
-  const s = raw.trim();
-  if (!s) return false;
-  try {
-    const u = new URL(s);
-    return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
 const SESSION_EXPIRED_DETAIL = "Your session expired. Please sign in again.";
 
 class SessionExpiredError extends Error {
@@ -209,6 +198,19 @@ async function parseApiDetail(res: Response): Promise<string> {
     void 0;
   }
   return text.trim() || res.statusText || `Request failed (${res.status})`;
+}
+
+async function patchProfileFields(
+  body: Record<string, unknown>,
+): Promise<{ ok: true } | { ok: false; status: number; detail: string }> {
+  const res = await fetch("/api/profile", {
+    method: "PATCH",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) return { ok: true };
+  return { ok: false, status: res.status, detail: await parseApiDetail(res) };
 }
 
 async function persistGenerationRecord(
@@ -327,6 +329,7 @@ function localCalendarYmd(): string {
 
 function ResumePreview({ resume, compact }: { resume: Resume; compact?: boolean }) {
   const density = compact ? "space-y-5 text-[13px] leading-relaxed" : "space-y-8 text-[15px] leading-relaxed";
+  const contactRow = contactRowText(resume, " · ");
   return (
     <article className={`${density} text-stone-800`}>
       <header className={`space-y-1 border-b border-[var(--border-muted)] ${compact ? "pb-4" : "pb-6"}`}>
@@ -339,15 +342,9 @@ function ResumePreview({ resume, compact }: { resume: Resume; compact?: boolean 
         {resume.target_title ? (
           <p className="text-sm font-semibold text-accent">{resume.target_title}</p>
         ) : null}
-        <div
-          className={`flex flex-col gap-0.5 ${uiResumeContactMeta}`}
-        >
-          {contactLines(resume).map((line, i) => (
-            <span key={i} className="block break-words">
-              {line}
-            </span>
-          ))}
-        </div>
+        {contactRow ? (
+          <p className={`${uiResumeContactMeta} break-words`}>{contactRow}</p>
+        ) : null}
       </header>
       <section>
         <h3
@@ -462,7 +459,6 @@ export function TailorHomeClient({
   const [systemBaseline, setSystemBaseline] = useState(() =>
     initialSystemPromptFromProfile(initialProfile),
   );
-  const [jobLink, setJobLink] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [sourceResume, setSourceResume] = useState(() =>
     initialSourceResumeFromProfile(initialProfile),
@@ -509,7 +505,7 @@ export function TailorHomeClient({
     const p = initialProfile?.pdf_template;
     return typeof p === "string" && isPdfTemplate(p) ? p : "classic";
   });
-  const [usePuterFree, setUsePuterFree] = useState(true);
+  const [usePuterFree, setUsePuterFree] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null as string | null);
   const [result, setResult] = useState(null as TailorResultState);
@@ -714,16 +710,11 @@ export function TailorHomeClient({
     return !t || isValidOptionalHttpUrl(t);
   }, [linkedin]);
 
-  const jobLinkOk = useMemo(() => {
-    return !jobLink.trim() || isValidPublicJobUrl(jobLink);
-  }, [jobLink]);
-
   const canSubmit = useMemo(() => {
     return (
       displayName.trim().length > 0 &&
       isValidEmailAddress(email) &&
       linkedinOk &&
-      jobLinkOk &&
       systemPrompt.trim().length >= 10 &&
       jobDescription.trim().length >= 20 &&
       sourceResume.trim().length >= 20
@@ -732,7 +723,6 @@ export function TailorHomeClient({
     displayName,
     email,
     linkedinOk,
-    jobLinkOk,
     systemPrompt,
     jobDescription,
     sourceResume,
@@ -744,7 +734,7 @@ export function TailorHomeClient({
       setError(null);
       if (!canSubmit) {
         setError(
-          "Complete your contact details on Profile (display name and valid email required). On this page, paste the job description (20+ characters), add system prompt (10+ characters), and experience (20+ characters). Job link is optional; if you add one, use a full https:// URL. If LinkedIn is set on Profile, it must be a valid http(s) URL.",
+          "Complete your contact details on Profile (display name and valid email required). On this page, paste the job description (20+ characters), add system prompt (10+ characters), and experience (20+ characters). If LinkedIn is set on Profile, it must be a valid http(s) URL.",
         );
         return;
       }
@@ -845,38 +835,18 @@ export function TailorHomeClient({
       setError("System prompt must be at least 10 characters to save.");
       return;
     }
-    const supabase = createClient();
-    const {
-      data: { user: u },
-    } = await supabase.auth.getUser();
-    if (!u) {
-      setError("Sign in to save tailoring rules.");
-      return;
-    }
-    console.log("u:" , u);
     setSavingTailoringRules(true);
     try {
-      const { data: savedRows, error: upErr } = await supabase
-        .from("profiles")
-        .update({
-          system_prompt: trimmed,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", u.id)
-        .select("id");
-      if (upErr) {
-        console.error(
-          "profiles system_prompt persist failed:",
-          upErr.message,
-        );
-        setError(upErr.message);
-        return;
-      }
-      if (!savedRows?.length) {
-        const msg =
-          "Could not save tailoring rules (no profile row updated). Sign in again, or confirm the profiles RLS policy allows your user to UPDATE their own row.";
-        console.error(msg);
-        setError(msg);
+      const result = await patchProfileFields({ system_prompt: trimmed });
+      if (!result.ok) {
+        if (result.status === 401) {
+          setError(result.detail);
+          router.replace("/login");
+          router.refresh();
+          return;
+        }
+        console.error("profiles system_prompt persist failed:", result.detail);
+        setError(result.detail);
         return;
       }
       setSystemPrompt(trimmed);
@@ -886,7 +856,7 @@ export function TailorHomeClient({
     } finally {
       setSavingTailoringRules(false);
     }
-  }, [systemPrompt]);
+  }, [systemPrompt, router]);
 
   const saveExperienceToProfile = useCallback(async () => {
     setError(null);
@@ -895,37 +865,18 @@ export function TailorHomeClient({
       setError("Your experience must be at least 20 characters to save.");
       return;
     }
-    const supabase = createClient();
-    const {
-      data: { user: u },
-    } = await supabase.auth.getUser();
-    if (!u) {
-      setError("Sign in to save your experience.");
-      return;
-    }
     setSavingExperienceDraft(true);
     try {
-      const { data: savedRows, error: upErr } = await supabase
-        .from("profiles")
-        .update({
-          source_resume: trimmed,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", u.id)
-        .select("id");
-      if (upErr) {
-        console.error(
-          "profiles source_resume persist failed:",
-          upErr.message,
-        );
-        setError(upErr.message);
-        return;
-      }
-      if (!savedRows?.length) {
-        const msg =
-          "Could not save experience (no profile row updated). Sign in again, or confirm the profiles RLS policy allows your user to UPDATE their own row.";
-        console.error(msg);
-        setError(msg);
+      const result = await patchProfileFields({ source_resume: trimmed });
+      if (!result.ok) {
+        if (result.status === 401) {
+          setError(result.detail);
+          router.replace("/login");
+          router.refresh();
+          return;
+        }
+        console.error("profiles source_resume persist failed:", result.detail);
+        setError(result.detail);
         return;
       }
       setSourceResume(trimmed);
@@ -935,7 +886,7 @@ export function TailorHomeClient({
     } finally {
       setSavingExperienceDraft(false);
     }
-  }, [sourceResume]);
+  }, [sourceResume, router]);
 
   const generateCoverLetterAction = useCallback(async () => {
     if (!result?.resume) return;
@@ -1035,16 +986,13 @@ export function TailorHomeClient({
     if (!result) return;
     setAtsLoading(true);
     requestAnimationFrame(() => {
-      const r = computeATS(result.resume, jobDescription, {
-        jobUrl: jobLink,
-        sourceResume,
-      });
+      const r = computeATS(result.resume, jobDescription, { sourceResume });
       setAtsSessionKey((k) => k + 1);
       setAtsResult(r);
       setAtsOpen(true);
       setAtsLoading(false);
     });
-  }, [result, jobDescription, jobLink, sourceResume]);
+  }, [result, jobDescription, sourceResume]);
 
   const applyAtsSuggestion = useCallback(
     (suggestion: ATSSuggestion) => {
@@ -1053,16 +1001,11 @@ export function TailorHomeClient({
       setResult((prev) => {
         if (!prev) return prev;
         const updated = suggestion.apply!(prev.resume);
-        setAtsResult(
-          computeATS(updated, jobDescription, {
-            jobUrl: jobLink,
-            sourceResume,
-          }),
-        );
+        setAtsResult(computeATS(updated, jobDescription, { sourceResume }));
         return { ...prev, resume: updated };
       });
     },
-    [jobDescription, jobLink, sourceResume],
+    [jobDescription, sourceResume],
   );
 
   const applyAllAtsSuggestions = useCallback(() => {
@@ -1071,23 +1014,15 @@ export function TailorHomeClient({
       if (!prev) return prev;
       let resume = prev.resume;
       for (let i = 0; i < 64; i++) {
-        const pass = computeATS(resume, jobDescription, {
-          jobUrl: jobLink,
-          sourceResume,
-        });
+        const pass = computeATS(resume, jobDescription, { sourceResume });
         const next = pass.suggestions.find((s) => s.canApply && s.apply);
         if (!next?.apply) break;
         resume = next.apply(resume);
       }
-      setAtsResult(
-        computeATS(resume, jobDescription, {
-          jobUrl: jobLink,
-          sourceResume,
-        }),
-      );
+      setAtsResult(computeATS(resume, jobDescription, { sourceResume }));
       return { ...prev, resume };
     });
-  }, [jobDescription, jobLink, sourceResume]);
+  }, [jobDescription, sourceResume]);
 
   const upgradeResumeFromAts = useCallback(async () => {
     if (!result?.resume || !atsResult) return;
@@ -1124,10 +1059,7 @@ export function TailorHomeClient({
       const upgraded = usePuterFree
         ? await generateResumeViaPuter(generationPayload)
         : await generateResume(generationPayload);
-      const upgradedAts = computeATS(upgraded.resume, jd, {
-        jobUrl: jobLink,
-        sourceResume,
-      });
+      const upgradedAts = computeATS(upgraded.resume, jd, { sourceResume });
 
       setResult(upgraded);
       setCoverLetter(null);
@@ -1164,7 +1096,6 @@ export function TailorHomeClient({
     llmModel,
     pdfTemplate,
     usePuterFree,
-    jobLink,
     router,
   ]);
 
@@ -1230,29 +1161,14 @@ export function TailorHomeClient({
                     className={textareaJob}
                     placeholder="Paste the full job posting text (minimum 20 characters)."
                   />
-                  <div className="shrink-0 space-y-1.5">
-                    <label htmlFor="job-link" className={uiFieldLabel}>
-                      Job link (optional)
-                    </label>
-                    <div className="flex items-stretch gap-2">
-                      <input
-                        id="job-link"
-                        type="url"
-                        inputMode="url"
-                        autoComplete="url"
-                        placeholder="https://… (helps ATS detection)"
-                        value={jobLink}
-                        onChange={(e) => setJobLink(e.target.value)}
-                        className={`${fieldControl} min-w-0 flex-1`}
-                      />
-                      <button
-                        type="submit"
-                        disabled={!canSubmit || loading}
-                        className={workshopBtnPrimary}
-                      >
-                        {loading ? "Generating…" : "Generate"}
-                      </button>
-                    </div>
+                  <div className="flex shrink-0 justify-end">
+                    <button
+                      type="submit"
+                      disabled={!canSubmit || loading}
+                      className={workshopBtnPrimary}
+                    >
+                      {loading ? "Generating…" : "Generate"}
+                    </button>
                   </div>
                 </div>
               </div>

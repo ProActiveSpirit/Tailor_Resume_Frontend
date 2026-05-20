@@ -1,7 +1,7 @@
 import type { Readable } from "stream";
 import PDFDocument from "pdfkit";
 import { formatResumeDateRange } from "@/lib/resume-date-format";
-import { contactLines } from "@/lib/resume-contact-lines";
+import { contactRowText } from "@/lib/resume-contact-lines";
 import type { PdfTemplate, Resume } from "@/lib/types";
 
 const LETTER_W = 612;
@@ -15,23 +15,17 @@ const FONT = {
 } as const;
 
 const STYLE = {
-  ink: "#17202a",
-  body: "#263442",
-  muted: "#657386",
-  accent: "#225e66",
-  accentDark: "#153e46",
-  divider: "#d4dde4",
-  sidebarBg: "#f4f8f9",
-  sidebarInk: "#25323f",
-  sidebarMuted: "#667583",
+  ink: "#1a2332",
+  body: "#4a5568",
+  muted: "#718096",
+  accent: "#2563eb",
+  divider: "#e2e8f0",
 } as const;
 
 const PAGE = {
-  marginX: 0.48 * INCH,
+  marginX: 0.55 * INCH,
   top: 0.5 * INCH,
   bottom: 0.5 * INCH,
-  sidebarW: 188,
-  gutter: 26,
 } as const;
 
 function stripBulletPrefix(line: string): string {
@@ -42,29 +36,12 @@ function bottomY(): number {
   return LETTER_H - PAGE.bottom;
 }
 
-function mainX(): number {
-  return PAGE.marginX + PAGE.sidebarW + PAGE.gutter;
+function contentX(): number {
+  return PAGE.marginX;
 }
 
-function mainWidth(): number {
-  return LETTER_W - mainX() - PAGE.marginX;
-}
-
-function drawPageFrame(doc: PDFKit.PDFDocument): void {
-  doc
-    .save()
-    .rect(0, 0, PAGE.marginX + PAGE.sidebarW + 14, LETTER_H)
-    .fill(STYLE.sidebarBg)
-    .restore();
-
-  doc
-    .save()
-    .strokeColor(STYLE.divider)
-    .lineWidth(0.8)
-    .moveTo(PAGE.marginX + PAGE.sidebarW + 14, PAGE.top)
-    .lineTo(PAGE.marginX + PAGE.sidebarW + 14, bottomY())
-    .stroke()
-    .restore();
+function contentWidth(): number {
+  return LETTER_W - PAGE.marginX * 2;
 }
 
 function textHeight(
@@ -114,72 +91,56 @@ function writeText(
   return y + height + after;
 }
 
-function newMainPage(doc: PDFKit.PDFDocument): number {
+function newPage(doc: PDFKit.PDFDocument): number {
   doc.addPage({ size: "LETTER", margin: 0 });
-  drawPageFrame(doc);
   return PAGE.top;
 }
 
-function guardMainY(
+function guardY(
   doc: PDFKit.PDFDocument,
   y: number,
   neededHeight: number,
 ): number {
-  if (y + neededHeight > bottomY()) return newMainPage(doc);
+  if (y + neededHeight > bottomY()) return newPage(doc);
   return y;
 }
 
 function drawSectionTitle(
   doc: PDFKit.PDFDocument,
   title: string,
-  x: number,
   y: number,
-  width: number,
-  variant: "sidebar" | "main",
 ): number {
-  const isSidebar = variant === "sidebar";
-  const size = isSidebar ? 8.5 : 10;
-  const color = isSidebar ? STYLE.accentDark : STYLE.accent;
-  const ruleY = y + size + 7;
+  const x = contentX();
+  const width = contentWidth();
+  const size = 9.5;
+  const ruleY = y + size + 6;
 
   doc
     .font(FONT.bold)
     .fontSize(size)
-    .fillColor(color)
+    .fillColor(STYLE.accent)
     .text(title.toUpperCase(), x, y, {
       width,
-      characterSpacing: 0.7,
+      characterSpacing: 0.8,
     });
 
   doc
-    .strokeColor(isSidebar ? "#cbd8dd" : STYLE.accent)
-    .lineWidth(isSidebar ? 0.5 : 0.8)
+    .strokeColor(STYLE.divider)
+    .lineWidth(0.6)
     .moveTo(x, ruleY)
     .lineTo(x + width, ruleY)
     .stroke();
 
-  return ruleY + (isSidebar ? 10 : 12);
+  return ruleY + 11;
 }
 
-function writeSidebarBlock(
-  doc: PDFKit.PDFDocument,
-  title: string,
-  y: number,
-  writer: (y: number) => number,
-): number {
-  const x = PAGE.marginX;
-  const width = PAGE.sidebarW;
-  y = drawSectionTitle(doc, title, x, y, width, "sidebar");
-  return writer(y) + 13;
-}
-
-function writeMainSectionTitle(
+function writeSectionTitle(
   doc: PDFKit.PDFDocument,
   title: string,
   y: number,
 ): number {
-  y = guardMainY(doc, y, 30);
-  return drawSectionTitle(doc, title, mainX(), y, mainWidth(), "main");
+  y = guardY(doc, y, 28);
+  return drawSectionTitle(doc, title, y);
 }
 
 function writeBullet(
@@ -206,7 +167,7 @@ function writeBullet(
   const height = textHeight(doc, clean, FONT.normal, size, bodyW, {
     lineGap: 1.2,
   });
-  const yy = options.guard === false ? y : guardMainY(doc, y, height + after);
+  const yy = options.guard === false ? y : guardY(doc, y, height + after);
 
   doc.font(FONT.bold).fontSize(size).fillColor(STYLE.accent).text("•", x, yy, {
     width: bulletW,
@@ -219,130 +180,80 @@ function writeBullet(
   return yy + height + after;
 }
 
-function writeSidebar(doc: PDFKit.PDFDocument, resume: Resume): void {
-  const x = PAGE.marginX;
-  const width = PAGE.sidebarW;
-  let y = PAGE.top + 2;
+function writeHeader(doc: PDFKit.PDFDocument, resume: Resume): number {
+  const x = contentX();
+  const width = contentWidth();
+  let y = PAGE.top;
 
   y = writeText(doc, resume.contact.name, x, y, width, {
     font: FONT.bold,
-    size: 22,
-    color: STYLE.ink,
-    after: 4,
+    size: 24,
+    color: STYLE.accent,
+    after: 3,
   });
 
   if (resume.target_title?.trim()) {
     y = writeText(doc, resume.target_title.trim(), x, y, width, {
-      font: FONT.bold,
-      size: 10.5,
-      color: STYLE.accent,
-      after: 14,
+      font: FONT.normal,
+      size: 11,
+      color: STYLE.muted,
+      after: 6,
     });
-  } else {
-    y += 8;
   }
 
-  const lines = contactLines(resume);
-  if (lines.length) {
-    y = writeSidebarBlock(doc, "Contact", y, (blockY) => {
-      let nextY = blockY;
-      for (const line of lines) {
-        nextY = writeText(doc, line, x, nextY, width, {
-          size: 8.6,
-          color: STYLE.sidebarMuted,
-          after: 5,
-        });
-      }
-      return nextY;
+  const contactRow = contactRowText(resume, " · ");
+  if (contactRow) {
+    y = writeText(doc, contactRow, x, y, width, {
+      size: 8.5,
+      color: STYLE.muted,
+      after: 10,
     });
   }
 
   if (resume.summary.trim()) {
-    y = writeSidebarBlock(doc, "Summary", y, (blockY) =>
-      writeText(doc, resume.summary.trim(), x, blockY, width, {
-        size: 8.7,
-        color: STYLE.sidebarInk,
-        after: 0,
-      }),
-    );
-  }
-
-  if (resume.skills.length) {
-    y += resume.summary.trim() ? 5 : 0;
-    y = writeSidebarBlock(doc, "Skills", y, (blockY) => {
-      let nextY = blockY;
-      for (const skill of resume.skills) {
-        nextY = writeBullet(doc, skill, x, nextY, width, {
-          size: 8.45,
-          color: STYLE.sidebarInk,
-          after: 2.5,
-          guard: false,
-        });
-      }
-      return nextY;
+    y = writeText(doc, resume.summary.trim(), x, y, width, {
+      size: 9.25,
+      color: STYLE.body,
+      after: 14,
     });
   }
 
-  if (resume.education.length) {
-    writeSidebarBlock(doc, "Education", y, (blockY) => {
-      let nextY = blockY;
-      for (const edu of resume.education) {
-        nextY = writeText(doc, edu.degree, x, nextY, width, {
-          font: FONT.bold,
-          size: 8.8,
-          color: STYLE.sidebarInk,
-          after: 2,
-        });
-        nextY = writeText(doc, edu.institution, x, nextY, width, {
-          size: 8.4,
-          color: STYLE.sidebarMuted,
-          after: 2,
-        });
-        const meta = [edu.dates, edu.details].filter(Boolean).join(" | ");
-        if (meta) {
-          nextY = writeText(doc, meta, x, nextY, width, {
-            size: 8.2,
-            color: STYLE.sidebarMuted,
-            after: 8,
-          });
-        } else {
-          nextY += 6;
-        }
-      }
-      return nextY;
-    });
-  }
+  return y;
 }
 
 function writeExperience(doc: PDFKit.PDFDocument, resume: Resume, startY: number): number {
-  let y = writeMainSectionTitle(doc, "Experience", startY);
+  if (!resume.experience.length) return startY;
+
+  let y = writeSectionTitle(doc, "Work Experience", startY);
+  const x = contentX();
+  const width = contentWidth();
 
   for (const exp of resume.experience) {
-    const companyLine = exp.company + (exp.location ? ` | ${exp.location}` : "");
+    const companyLine = exp.company + (exp.location ? ` — ${exp.location}` : "");
     const dateText = formatResumeDateRange(exp.dates ?? "");
-    const roleW = mainWidth() * 0.62;
-    const dateGap = 14;
-    const dateW = mainWidth() - roleW - dateGap;
-    const titleH = textHeight(doc, exp.title, FONT.bold, 11.25, roleW);
-    const companyH = textHeight(doc, companyLine, FONT.normal, 9.3, roleW);
+    const roleW = width * 0.65;
+    const dateGap = 12;
+    const dateW = width - roleW - dateGap;
+    const titleH = textHeight(doc, exp.title, FONT.bold, 10.5, roleW);
+    const companyH = textHeight(doc, companyLine, FONT.normal, 9.2, width);
     const dateH = dateText
-      ? textHeight(doc, dateText, FONT.italic, 8.8, dateW, { align: "right" })
+      ? textHeight(doc, dateText, FONT.bold, 9, dateW, { align: "right" })
       : 0;
-    const headerH = Math.max(titleH + companyH + 4, dateH) + 4;
+    const headerH = Math.max(titleH, dateH) + companyH + 6;
 
-    y = guardMainY(doc, y + 3, headerH + 18);
+    y = guardY(doc, y + 4, headerH + 16);
 
-    doc.font(FONT.bold).fontSize(11.25).fillColor(STYLE.ink).text(exp.title, mainX(), y, {
+    doc.font(FONT.bold).fontSize(10.5).fillColor(STYLE.ink).text(exp.title, x, y, {
       width: roleW,
       lineGap: 0.5,
     });
 
     if (dateText) {
       doc
-        .font(FONT.italic)
-        .fontSize(8.8)
-        .fillColor(STYLE.muted)
-        .text(dateText, mainX() + roleW + dateGap, y + 1, {
+        .font(FONT.bold)
+        .fontSize(9)
+        .fillColor(STYLE.ink)
+        .text(dateText, x + roleW + dateGap, y, {
           width: dateW,
           align: "right",
         });
@@ -350,16 +261,16 @@ function writeExperience(doc: PDFKit.PDFDocument, resume: Resume, startY: number
 
     doc
       .font(FONT.normal)
-      .fontSize(9.3)
-      .fillColor(STYLE.accent)
-      .text(companyLine, mainX(), y + titleH + 1, {
-        width: roleW,
+      .fontSize(9.2)
+      .fillColor(STYLE.muted)
+      .text(companyLine, x, y + titleH + 2, {
+        width,
       });
 
     y += headerH;
 
     for (const line of exp.bullets) {
-      y = writeBullet(doc, line, mainX(), y, mainWidth(), {
+      y = writeBullet(doc, line, x, y, width, {
         size: 9.15,
         after: 3.4,
       });
@@ -371,14 +282,154 @@ function writeExperience(doc: PDFKit.PDFDocument, resume: Resume, startY: number
   return y;
 }
 
+function writeEducation(doc: PDFKit.PDFDocument, resume: Resume, startY: number): number {
+  if (!resume.education.length) return startY;
+
+  let y = writeSectionTitle(doc, "Education", startY + 2);
+  const x = contentX();
+  const width = contentWidth();
+
+  for (const edu of resume.education) {
+    const institutionLine =
+      edu.institution + (edu.dates ? ` — ${edu.dates}` : "");
+    const instH = textHeight(doc, institutionLine, FONT.bold, 10, width);
+    const degreeH = textHeight(doc, edu.degree, FONT.normal, 9.2, width);
+    const detailsH = edu.details
+      ? textHeight(doc, edu.details, FONT.normal, 8.8, width)
+      : 0;
+    const blockH = instH + degreeH + detailsH + 10;
+
+    y = guardY(doc, y + 2, blockH);
+
+    y = writeText(doc, institutionLine, x, y, width, {
+      font: FONT.bold,
+      size: 10,
+      color: STYLE.ink,
+      after: 2,
+    });
+
+    y = writeText(doc, edu.degree, x, y, width, {
+      size: 9.2,
+      color: STYLE.body,
+      after: edu.details ? 2 : 8,
+    });
+
+    if (edu.details) {
+      y = writeText(doc, edu.details, x, y, width, {
+        size: 8.8,
+        color: STYLE.muted,
+        after: 8,
+      });
+    }
+  }
+
+  return y;
+}
+
+function isSectorGrouped(skill: string): boolean {
+  return skill.indexOf(": ") !== -1;
+}
+
+function writeSkills(doc: PDFKit.PDFDocument, resume: Resume, startY: number): number {
+  if (!resume.skills.length) return startY;
+
+  let y = writeSectionTitle(doc, "Skills", startY + 2);
+  const x = contentX();
+  const width = contentWidth();
+
+  const hasSectors = resume.skills.some(isSectorGrouped);
+
+  if (hasSectors) {
+    // Render each skill as "Category  item1, item2, item3"
+    for (const skill of resume.skills) {
+      const colonIdx = skill.indexOf(": ");
+      if (colonIdx !== -1) {
+        const category = skill.slice(0, colonIdx).trim();
+        const items = skill.slice(colonIdx + 2).trim();
+
+        const categoryW = 120;
+        const itemsW = width - categoryW;
+        const lineH = Math.max(
+          textHeight(doc, category, FONT.bold, 9, categoryW),
+          textHeight(doc, items, FONT.normal, 9, itemsW),
+        );
+
+        y = guardY(doc, y, lineH + 5);
+
+        doc.font(FONT.bold).fontSize(9).fillColor(STYLE.accent).text(category, x, y, {
+          width: categoryW,
+          lineGap: 1,
+        });
+        doc.font(FONT.normal).fontSize(9).fillColor(STYLE.body).text(items, x + categoryW, y, {
+          width: itemsW,
+          lineGap: 1,
+        });
+
+        y += lineH + 5;
+      } else {
+        const h = textHeight(doc, skill, FONT.normal, 9, width);
+        y = guardY(doc, y, h + 4);
+        y = writeText(doc, skill, x, y, width, { size: 9, color: STYLE.body, after: 4 });
+      }
+    }
+    return y + 6;
+  }
+
+  // Fallback: flat comma-separated list
+  const text = resume.skills.join(", ");
+  y = guardY(doc, y, textHeight(doc, text, FONT.normal, 9.2, width) + 4);
+  return writeText(doc, text, x, y, width, {
+    size: 9.2,
+    color: STYLE.body,
+    after: 10,
+  });
+}
+
+function writeCertifications(doc: PDFKit.PDFDocument, resume: Resume, startY: number): number {
+  const certs = resume.certifications ?? [];
+  if (!certs.length) return startY;
+
+  let y = writeSectionTitle(doc, "Certifications", startY + 2);
+  const x = contentX();
+  const width = contentWidth();
+
+  for (const cert of certs) {
+    const line = [cert.issuer, cert.year].filter(Boolean).join(" · ");
+    const nameH = textHeight(doc, cert.name, FONT.bold, 9.5, width);
+    const metaH = line ? textHeight(doc, line, FONT.normal, 8.8, width) : 0;
+    const blockH = nameH + metaH + 6;
+
+    y = guardY(doc, y + 2, blockH);
+
+    y = writeText(doc, cert.name, x, y, width, {
+      font: FONT.bold,
+      size: 9.5,
+      color: STYLE.ink,
+      after: line ? 1 : 6,
+    });
+
+    if (line) {
+      y = writeText(doc, line, x, y, width, {
+        size: 8.8,
+        color: STYLE.muted,
+        after: 6,
+      });
+    }
+  }
+
+  return y;
+}
+
 function writeProjects(doc: PDFKit.PDFDocument, resume: Resume, startY: number): number {
   if (!resume.projects.length) return startY;
 
-  let y = writeMainSectionTitle(doc, "Projects", startY + 5);
+  let y = writeSectionTitle(doc, "Projects", startY + 2);
+  const x = contentX();
+  const width = contentWidth();
 
   for (const project of resume.projects) {
-    y = guardMainY(doc, y + 2, 34);
-    y = writeText(doc, project.name, mainX(), y, mainWidth(), {
+    y = guardY(doc, y + 2, 34);
+    y = writeText(doc, project.name, x, y, width, {
       font: FONT.bold,
       size: 10.5,
       color: STYLE.ink,
@@ -386,7 +437,7 @@ function writeProjects(doc: PDFKit.PDFDocument, resume: Resume, startY: number):
     });
 
     if (project.description?.trim()) {
-      y = writeText(doc, project.description.trim(), mainX(), y, mainWidth(), {
+      y = writeText(doc, project.description.trim(), x, y, width, {
         size: 9.15,
         color: STYLE.body,
         after: 3,
@@ -394,7 +445,7 @@ function writeProjects(doc: PDFKit.PDFDocument, resume: Resume, startY: number):
     }
 
     for (const line of project.bullets) {
-      y = writeBullet(doc, line, mainX(), y, mainWidth(), {
+      y = writeBullet(doc, line, x, y, width, {
         size: 9.05,
         after: 3,
       });
@@ -420,11 +471,11 @@ export function resumeToPdfBytes(
     readable.on("error", reject);
     readable.on("end", () => resolve(Buffer.concat(chunks)));
 
-    drawPageFrame(doc);
-    writeSidebar(doc, resume);
-
-    let y = PAGE.top + 3;
+    let y = writeHeader(doc, resume);
+    y = writeSkills(doc, resume, y);
     y = writeExperience(doc, resume, y);
+    y = writeEducation(doc, resume, y);
+    y = writeCertifications(doc, resume, y);
     writeProjects(doc, resume, y);
 
     doc.end();

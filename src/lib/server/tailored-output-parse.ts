@@ -1,5 +1,6 @@
 import type { Resume } from "@/lib/types";
-import { enforceGeneratedExperienceRules } from "./experience-rules";
+import { mergeSourceExperienceMetadata } from "./experience-rules";
+import { parseSourceExperience } from "./parse-source-experience";
 import { applyRequestOverrides } from "./resume-prompt";
 import { normalizeLlmResumeJson } from "./resume-llm-normalize";
 import {
@@ -81,8 +82,10 @@ export function parseTailoredGenerationFromLlm(
     resume: resumeOnly,
   });
 
-  const resume = enforceGeneratedExperienceRules(
+  const sourceEntries = parseSourceExperience(body.source_resume);
+  const resume = mergeSourceExperienceMetadata(
     applyRequestOverrides(wrapper.resume, body, wrapper.job_title),
+    sourceEntries,
   );
 
   return {

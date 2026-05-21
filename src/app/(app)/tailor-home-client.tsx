@@ -1123,7 +1123,7 @@ export function TailorHomeClient({
                     value={sourceResume}
                     onChange={(e) => setSourceResume(e.target.value)}
                     className={textareaWorkshopExperience}
-                    placeholder="Roles, dates, impact, skills—everything we must not invent."
+                    placeholder={`Education:\n\nUniversity Name\nCity, State\nDegree Name\nApril 2010 – November 2014\n\nWork Experience:\n\nJanuary 2015 – May 2017\nCompany Name — City, State\n\n(blank line between each role; dates line first, then Company — Location)`}
                     autoComplete="off"
                     spellCheck
                   />
